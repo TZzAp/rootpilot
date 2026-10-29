@@ -13,6 +13,7 @@ from typing import Any
 
 from agent.providers.openai import OpenAIProvider
 from agent.redact import Redactor
+from agent.types import Message, ToolSpec
 
 API_URL = "https://api.deepseek.com/chat/completions"
 DEFAULT_MODEL = "deepseek-flash"
@@ -27,5 +28,19 @@ class DeepSeekProvider(OpenAIProvider):
     default_model = DEFAULT_MODEL
     api_url = API_URL
 
-    def __init__(self, api_key: str, model: str = "", *, redactor: Redactor, **kw: Any) -> None:
+    def __init__(
+        self, api_key: str, model: str = "", *, effort: str = "", redactor: Redactor, **kw: Any
+    ) -> None:
         super().__init__(api_key, model, redactor=redactor, **kw)
+        self.effort = effort
+
+    def build_request(
+        self, system: str, messages: list[Message], tools: list[ToolSpec], max_output_tokens: int
+    ) -> dict[str, Any]:
+        body = super().build_request(system, messages, tools, max_output_tokens)
+        # Thinking is on by default (effort "high"). "off" turns it off: much faster per step.
+        if self.effort == "off":
+            body["thinking"] = {"type": "disabled"}
+        elif self.effort:
+            body["reasoning_effort"] = {"medium": "high"}.get(self.effort, self.effort)
+        return body

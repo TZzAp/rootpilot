@@ -36,6 +36,7 @@ from agent.paths import (
 )
 from agent.permissions import Decision, Rule
 from agent.tools.registry import Category
+from agent.types import Usage
 
 CONFIRM_TIMEOUT = 180.0
 MAX_LINES = 120
@@ -179,14 +180,25 @@ class ControlServer:
 
     def _run(self, task: str) -> None:
         stop_file().unlink(missing_ok=True)  # clear a STOP left by a previous run
-        agent = self._build(self.state, task)
+        try:
+            agent = self._build(self.state, task)
+        except Exception as exc:
+            self.state.begin("", task)
+            self.state.report(f"⚠️ cannot start: {exc}")
+            self.state.finish(RunResult("", f"Cannot start: {exc}", False, "error", 0, Usage()))
+            return
         self.state.begin(agent.run_id, task)
+        result: Optional[RunResult] = None
         try:
             result = agent.run(task)
+        except Exception as exc:
+            self.state.report(f"⚠️ run crashed: {exc}")
+            result = RunResult(agent.run_id, f"Run crashed: {exc}", False, "error", 0, Usage())
         finally:
             agent.audit.close()
             agent.backend.close()
-        self.state.finish(result)
+            ended = RunResult(agent.run_id, "Run ended", False, "error", 0, Usage())
+            self.state.finish(result or ended)
 
     def stop_run(self) -> None:
         ensure_private_dir(state_dir())

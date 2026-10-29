@@ -16,6 +16,7 @@
 
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
+#import <Vision/Vision.h>
 #include <dlfcn.h>
 #include <notify.h>
 #include <unistd.h>
@@ -27,6 +28,8 @@ static NSString *const kStatusPath = @"/var/mobile/Library/RootPilot/hud.status.
 static NSString *const kCaptureRequest = @"/var/mobile/Library/RootPilot/capture.request";
 static NSString *const kCaptureStatus = @"/var/mobile/Library/RootPilot/capture.status.json";
 static NSString *const kCaptureDir = @"/var/mobile/Library/RootPilot/captures";
+static NSString *const kOCRRequest = @"/var/mobile/Library/RootPilot/ocr.request";
+static NSString *const kOCRResult = @"/var/mobile/Library/RootPilot/ocr.result.json";
 
 // Self-report for `rootpilot doctor` and debugging: proves the overlay loaded and drew.
 static void RPWriteStatus(NSDictionary *extra) {
@@ -368,6 +371,97 @@ static RPScreenFn RPScreenFunction(void) {
 
 @end
 
+// ---- text recognition --------------------------------------------------------------------
+//
+// Replaces ZXTouch's OCR, which leaks 15-30 MB of SpringBoard memory per read (measured on
+// iOS 15 and 16) until jetsam kills SpringBoard. Here every read runs inside an autorelease
+// pool and holds the screen image only for the duration of the request.
+
+@interface RPOCR : NSObject
+@property(nonatomic, strong) dispatch_queue_t queue;
+@property(nonatomic, assign) BOOL busy;
++ (instancetype)shared;
+@end
+
+@implementation RPOCR
+
++ (instancetype)shared {
+    static RPOCR *ocr;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      ocr = [RPOCR new];
+      ocr.queue = dispatch_queue_create("com.rootpilot.hud.ocr", DISPATCH_QUEUE_SERIAL);
+    });
+    return ocr;
+}
+
+- (void)finish:(NSString *)rid items:(NSArray *)items size:(CGSize)size error:(NSString *)error {
+    NSDictionary *result = @{
+        @"id" : rid ?: @"",
+        @"items" : items ?: @[],
+        @"w" : @(size.width),
+        @"h" : @(size.height),
+        @"error" : error ?: @""
+    };
+    [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:kOCRResult
+                                                                          atomically:YES];
+}
+
+- (void)startFromRequest {
+    NSData *data = [NSData dataWithContentsOfFile:kOCRRequest];
+    [NSFileManager.defaultManager removeItemAtPath:kOCRRequest error:nil];
+    if (!data) return;
+    NSDictionary *req = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![req isKindOfClass:NSDictionary.class]) return;
+    NSString *rid = [req[@"id"] description] ?: @"";
+    BOOL fast = [req[@"fast"] boolValue];
+    CGSize points = UIScreen.mainScreen.bounds.size;
+    if (self.busy) {
+        [self finish:rid items:nil size:points error:@"busy"];
+        return;
+    }
+    if (!RPScreenFunction()) {
+        [self finish:rid items:nil size:points error:@"_UICreateScreenUIImage not available"];
+        return;
+    }
+    UIImage *shot = (__bridge_transfer UIImage *)RPScreenFunction()();
+    if (!shot.CGImage) {
+        [self finish:rid items:nil size:points error:@"screen capture failed"];
+        return;
+    }
+    self.busy = YES;
+    dispatch_async(self.queue, ^{
+      @autoreleasepool {
+        NSMutableArray *items = [NSMutableArray array];
+        NSError *error = nil;
+        VNRecognizeTextRequest *request = [[VNRecognizeTextRequest alloc] init];
+        request.recognitionLevel = fast ? VNRequestTextRecognitionLevelFast
+                                        : VNRequestTextRecognitionLevelAccurate;
+        request.usesLanguageCorrection = NO;  // UI text: keep exactly what is drawn
+        VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCGImage:shot.CGImage
+                                                                                options:@{}];
+        [handler performRequests:@[ request ] error:&error];
+        for (VNRecognizedTextObservation *obs in request.results) {
+            VNRecognizedText *best = [obs topCandidates:1].firstObject;
+            if (best.string.length == 0) continue;
+            CGRect b = obs.boundingBox;  // normalised, origin bottom-left
+            [items addObject:@{
+                @"text" : best.string,
+                @"x" : @(b.origin.x * points.width),
+                @"y" : @((1 - b.origin.y - b.size.height) * points.height),
+                @"w" : @(b.size.width * points.width),
+                @"h" : @(b.size.height * points.height),
+                @"c" : @(best.confidence)
+            }];
+        }
+        [self finish:rid items:items size:points error:error.localizedDescription];
+      }
+      dispatch_async(dispatch_get_main_queue(), ^{ self.busy = NO; });
+    });
+}
+
+@end
+
 static void RPRegister(void) {
     int token;
     dispatch_queue_t main = dispatch_get_main_queue();
@@ -379,6 +473,9 @@ static void RPRegister(void) {
     });
     notify_register_dispatch("com.rootpilot.hud.idle", &token, main, ^(int t) {
       [[RPHUD shared] hide];
+    });
+    notify_register_dispatch("com.rootpilot.hud.ocr", &token, main, ^(int t) {
+      [[RPOCR shared] startFromRequest];
     });
     notify_register_dispatch("com.rootpilot.hud.capture", &token, main, ^(int t) {
       [[RPCapture shared] startFromRequest];

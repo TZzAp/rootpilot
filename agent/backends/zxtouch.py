@@ -16,7 +16,9 @@ import time
 from typing import Optional
 
 from agent.backends import zxtouch_protocol as proto
+from agent.backends.hud_ocr import HudOCR
 from agent.errors import BackendError, BackendTimeout, BackendUnsupported, ConfigError
+from agent.indicator import hud_installed
 from agent.paths import jbroot
 from agent.types import Button, Capability, Image, Rect, Size, UINode
 
@@ -43,9 +45,17 @@ class ZXTouchBackend:
     name = "zxtouch"
 
     def __init__(
-        self, host: str = "127.0.0.1", port: int = proto.DEFAULT_PORT, timeout: float = 5.0
+        self,
+        host: str = "127.0.0.1",
+        port: int = proto.DEFAULT_PORT,
+        timeout: float = 5.0,
+        ocr: str = "auto",
     ) -> None:
         require_loopback(host, port)
+        if ocr not in ("auto", "hud", "zxtouch"):
+            raise ConfigError(f"ocr must be auto, hud or zxtouch, not {ocr!r}")
+        self._ocr_mode = ocr
+        self._hud_ocr: Optional[HudOCR] = None
         self._addr = (host, port)
         self._timeout = timeout
         self._sock: Optional[socket.socket] = None
@@ -86,6 +96,9 @@ class ZXTouchBackend:
         except socket.timeout as exc:
             self.close()
             raise BackendTimeout("ZXTouch did not reply in time") from exc
+        except OSError as exc:  # e.g. connection reset when SpringBoard restarts
+            self.close()
+            raise BackendError(f"ZXTouch connection lost: {exc}") from exc
         line, _, self._buf = self._buf.partition(b"\r\n")
         ok, fields = proto.decode(line)
         if not ok:
@@ -134,18 +147,36 @@ class ZXTouchBackend:
     def screenshot(self) -> Image:
         raise BackendUnsupported("ZXTouch cannot take screenshots; use observe's UI tree (OCR)")
 
-    def ui_tree(self) -> Optional[UINode]:
+    def ocr_engine(self) -> str:
+        """Which text recognition ui_tree uses: "overlay" (leak-free) or "zxtouch"."""
+        if self._ocr_mode == "hud" or (self._ocr_mode == "auto" and hud_installed()):
+            return "overlay"
+        return "zxtouch"
+
+    def _read_text(self) -> list[tuple[str, float, float, float, float]]:
+        """OCR boxes in points."""
+        if self.ocr_engine() == "overlay":
+            if self._hud_ocr is None:
+                self._hud_ocr = HudOCR()
+            try:
+                return self._hud_ocr.read()
+            except BackendTimeout:
+                if self._ocr_mode == "hud":
+                    raise
+                self._ocr_mode = "zxtouch"  # overlay not loaded: fall back for this session
         px, s = self._pixel_size(), self.scale()
         fields = self._request(proto.ocr_request(0, 0, px.width, px.height))
+        return [(t, x / s, y / s, w / s, h / s) for t, x, y, w, h in proto.parse_ocr(fields)]
+
+    def ui_tree(self) -> Optional[UINode]:
+        size = self.screen_size()
         children = [
-            UINode(role="Text", label=text, frame=Rect(x / s, y / s, w / s, h / s))
-            for text, x, y, w, h in proto.parse_ocr(fields)
+            UINode(role="Text", label=text, frame=Rect(x, y, w, h))
+            for text, x, y, w, h in self._read_text()
         ]
         children.sort(key=lambda n: (n.frame.y, n.frame.x) if n.frame else (0.0, 0.0))
         # Unlabelled root: OCR gives text only, no element roles or containers.
-        return UINode(
-            role="Screen", frame=Rect(0, 0, px.width / s, px.height / s), children=children
-        )
+        return UINode(role="Screen", frame=Rect(0, 0, size.width, size.height), children=children)
 
     def _touch(self, kind: int, x: float, y: float) -> None:
         s = self.scale()

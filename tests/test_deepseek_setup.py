@@ -185,3 +185,34 @@ def test_setup_requires_a_key(tmp_path: Path) -> None:
 def test_scripted_provider_is_a_provider() -> None:
     # keeps the test double honest about the Provider protocol's vision flag
     assert ScriptedProvider([]).vision is True
+
+
+@pytest.mark.parametrize(
+    ("effort", "expect"),
+    [
+        ("", {}),
+        ("off", {"thinking": {"type": "disabled"}}),
+        ("low", {"reasoning_effort": "low"}),
+        ("medium", {"reasoning_effort": "high"}),
+        ("max", {"reasoning_effort": "max"}),
+    ],
+)
+def test_deepseek_effort(effort: str, expect: dict[str, Any]) -> None:
+    p = DeepSeekProvider(DS_KEY, effort=effort, redactor=Redactor())
+    body = p.build_request("sys", [Message("user", [TextPart("hi")])], TOOLS, 100)
+    for key in ("thinking", "reasoning_effort"):
+        assert body.get(key) == expect.get(key)
+
+
+def test_effort_validation_and_anthropic_mapping(tmp_path: Path) -> None:
+    from agent.config import Config
+    from agent.errors import ConfigError
+
+    with pytest.raises(ConfigError, match="effort"):
+        make_provider(
+            Config(provider="deepseek", deepseek_api_key=DS_KEY, effort="turbo"), Redactor()
+        )
+    a = make_provider(Config(anthropic_api_key="sk-ant-x" + "y" * 30, effort="off"), Redactor())
+    assert a.effort == "low"  # type: ignore[attr-defined]
+    a = make_provider(Config(anthropic_api_key="sk-ant-x" + "y" * 30), Redactor())
+    assert a.effort == "medium"  # type: ignore[attr-defined]

@@ -8,17 +8,25 @@ from agent.providers.base import Provider
 from agent.redact import Redactor
 
 PROVIDERS = ("anthropic", "deepseek", "openai", "compat", "chatgpt")
+EFFORTS = ("", "off", "low", "medium", "high", "max")
+DEFAULT_MODELS = {"anthropic": "claude-opus-5-5", "deepseek": "deepseek-flash"}
 
 
 def make_provider(cfg: Config, redactor: Redactor) -> Provider:
+    if cfg.effort not in EFFORTS:
+        raise ConfigError(f"effort must be one of {', '.join(e or '(default)' for e in EFFORTS)}")
     if cfg.provider == "anthropic":
         from agent.providers.anthropic import AnthropicProvider
 
-        return AnthropicProvider(cfg.anthropic_api_key, cfg.model, redactor=redactor)
+        # Claude Opus 5.5 always thinks; "off" means as little as possible.
+        effort = {"": "medium", "off": "low"}.get(cfg.effort, cfg.effort)
+        return AnthropicProvider(cfg.anthropic_api_key, cfg.model, effort, redactor=redactor)
     if cfg.provider == "deepseek":
         from agent.providers.deepseek import DeepSeekProvider
 
-        return DeepSeekProvider(cfg.deepseek_api_key, cfg.model, redactor=redactor)
+        return DeepSeekProvider(
+            cfg.deepseek_api_key, cfg.model, effort=cfg.effort, redactor=redactor
+        )
     if cfg.provider == "openai":
         from agent.providers.openai import OpenAIProvider
 

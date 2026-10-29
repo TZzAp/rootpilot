@@ -9,6 +9,7 @@ clang -target arm64-apple-ios14.0 -isysroot "$SDK" -fobjc-arc -O2 -Wall -Wextra 
   -Wno-unused-parameter -dynamiclib --ld-path="$LD" \
   -Wl,-arch,arm64 -Wl,-platform_version,ios,14.0,16.5 -Wl,-syslibroot,"$SDK" \
   -framework Foundation -framework UIKit -framework QuartzCore -framework CoreGraphics \
+  -framework Vision \
   -install_name /Library/MobileSubstrate/DynamicLibraries/RootPilotHUD.dylib \
   -o RootPilotHUD.dylib RootPilotHUD.m
 echo "built $(pwd)/RootPilotHUD.dylib"

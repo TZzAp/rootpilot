@@ -27,6 +27,7 @@ _ENV = {
     "ROOTPILOT_ZXTOUCH_HOST": "zxtouch_host",
     "ROOTPILOT_ZXTOUCH_PORT": "zxtouch_port",
     "ROOTPILOT_SERVE_PORT": "serve_port",
+    "ROOTPILOT_EFFORT": "effort",
 }
 
 
@@ -45,12 +46,15 @@ class Config:
 
     zxtouch_host: str = "127.0.0.1"
     zxtouch_port: int = 6000
+    ocr: str = "auto"  # auto (overlay if installed) | hud | zxtouch
     serve_port: int = 8366  # loopback-only control server (rootpilot serve)
 
     max_steps: int = 40
     max_tokens: int = 400_000
     max_seconds: float = 600.0
     max_output_tokens: int = 16000  # thinking counts toward this
+    # How hard the model thinks: "" (provider default), off, low, medium, high, max.
+    effort: str = ""
     image_max_edge: int = 1280
     keep_screenshots: int = 3
     save_screens: bool = False
