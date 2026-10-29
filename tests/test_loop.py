@@ -28,6 +28,7 @@ class ScriptedProvider:
 
     name = "scripted"
     model = "scripted-1"
+    vision = True
 
     def __init__(self, steps: list[Step]) -> None:
         self.steps = list(steps)

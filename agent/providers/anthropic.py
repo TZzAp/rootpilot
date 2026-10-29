@@ -74,6 +74,7 @@ def _content(parts: list[Any]) -> list[dict[str, Any]]:
 
 class AnthropicProvider:
     name = "anthropic"
+    vision = True
 
     def __init__(
         self,

@@ -11,6 +11,7 @@ from agent.types import Completion, Message, ToolSpec
 class Provider(Protocol):
     name: str
     model: str
+    vision: bool  # accepts image input; if not, the loop sends the UI tree only
 
     def complete(
         self,

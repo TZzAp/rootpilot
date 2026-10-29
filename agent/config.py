@@ -13,7 +13,7 @@ from typing import Any, Optional
 from agent.errors import ConfigError
 from agent.paths import config_dir
 
-SECRET_FIELDS = ("anthropic_api_key", "openai_api_key", "compat_api_key")
+SECRET_FIELDS = ("anthropic_api_key", "openai_api_key", "deepseek_api_key", "compat_api_key")
 
 _ENV = {
     "ROOTPILOT_PROVIDER": "provider",
@@ -21,6 +21,7 @@ _ENV = {
     "ROOTPILOT_BACKEND": "backend",
     "ANTHROPIC_API_KEY": "anthropic_api_key",
     "OPENAI_API_KEY": "openai_api_key",
+    "DEEPSEEK_API_KEY": "deepseek_api_key",
     "ROOTPILOT_COMPAT_BASE_URL": "compat_base_url",
     "ROOTPILOT_COMPAT_API_KEY": "compat_api_key",
     "ROOTPILOT_ZXTOUCH_HOST": "zxtouch_host",
@@ -36,8 +37,10 @@ class Config:
 
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+    deepseek_api_key: str = ""
     compat_base_url: str = ""
     compat_api_key: str = ""
+    compat_vision: bool = True  # set false for text-only local models
 
     zxtouch_host: str = "127.0.0.1"
     zxtouch_port: int = 6000

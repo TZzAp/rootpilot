@@ -11,6 +11,7 @@ from agent.redact import Redactor
 
 class CompatProvider(OpenAIProvider):
     name = "compat"
+    max_tokens_field = "max_tokens"  # what llama.cpp, Ollama and LM Studio understand
 
     def __init__(
         self, base_url: str, model: str, api_key: str = "", *, redactor: Redactor, **kw: Any

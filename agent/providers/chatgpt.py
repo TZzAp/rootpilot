@@ -12,6 +12,7 @@ from typing import Any, NoReturn
 class ChatGPTProvider:
     name = "chatgpt"
     model = ""
+    vision = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         raise NotImplementedError(

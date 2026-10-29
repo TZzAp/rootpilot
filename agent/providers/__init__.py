@@ -7,7 +7,7 @@ from agent.errors import ConfigError
 from agent.providers.base import Provider
 from agent.redact import Redactor
 
-PROVIDERS = ("anthropic", "openai", "compat", "chatgpt")
+PROVIDERS = ("anthropic", "deepseek", "openai", "compat", "chatgpt")
 
 
 def make_provider(cfg: Config, redactor: Redactor) -> Provider:
@@ -15,6 +15,10 @@ def make_provider(cfg: Config, redactor: Redactor) -> Provider:
         from agent.providers.anthropic import AnthropicProvider
 
         return AnthropicProvider(cfg.anthropic_api_key, cfg.model, redactor=redactor)
+    if cfg.provider == "deepseek":
+        from agent.providers.deepseek import DeepSeekProvider
+
+        return DeepSeekProvider(cfg.deepseek_api_key, cfg.model, redactor=redactor)
     if cfg.provider == "openai":
         from agent.providers.openai import OpenAIProvider
 
@@ -30,6 +34,7 @@ def make_provider(cfg: Config, redactor: Redactor) -> Provider:
             cfg.compat_api_key,
             redactor=redactor,
             keep_screenshots=cfg.keep_screenshots,
+            vision=cfg.compat_vision,
         )
     if cfg.provider == "chatgpt":
         from agent.providers.chatgpt import ChatGPTProvider

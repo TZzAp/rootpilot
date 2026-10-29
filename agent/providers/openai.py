@@ -3,6 +3,8 @@
 Chat Completions only accepts text in ``tool`` messages, so screenshots from a tool result are
 sent in a follow-up ``user`` message. Unlike Anthropic, there is no thinking-block binding, so
 older screenshots are replaced with a placeholder to keep requests small.
+
+Subclasses (DeepSeek, OpenAI-compatible servers) adjust the class attributes below.
 """
 
 from __future__ import annotations
@@ -37,6 +39,13 @@ def _image(part: ImagePart) -> dict[str, Any]:
 
 class OpenAIProvider:
     name = "openai"
+    vision = True  # accepts image input; the loop only takes screenshots for vision models
+    max_tokens_field = "max_completion_tokens"
+    # Fields of a returned assistant message that must be sent back verbatim on later requests.
+    replay_fields: tuple[str, ...] = ()
+    key_hint = "OPENAI_API_KEY or openai_api_key"
+    default_model = ""
+    api_url = API_URL
 
     def __init__(
         self,
@@ -47,20 +56,22 @@ class OpenAIProvider:
         base_url: str = "",
         keep_screenshots: int = 3,
         require_key: bool = True,
+        vision: bool | None = None,
         opener: Opener | None = None,
         sleep: Sleep | None = None,
     ) -> None:
         if require_key and not api_key:
-            raise ProviderError(
-                "no OpenAI API key: set OPENAI_API_KEY or openai_api_key in the config"
-            )
+            raise ProviderError(f"no {self.name} API key: set {self.key_hint} in the config")
+        model = model or self.default_model
         if not model:
             raise ProviderError(
                 f"set a model for the {self.name} provider (--model or 'model' in config)"
             )
+        if vision is not None:
+            self.vision = vision
         self.model = model
         self._key = api_key
-        self._url = (base_url.rstrip("/") + "/chat/completions") if base_url else API_URL
+        self._url = (base_url.rstrip("/") + "/chat/completions") if base_url else self.api_url
         self._keep = keep_screenshots
         self._redactor = redactor
         self._http: dict[str, Any] = {}
@@ -82,6 +93,8 @@ class OpenAIProvider:
                     image_budget -= 1
 
         def image_or_note(part: ImagePart) -> dict[str, Any]:
+            if not self.vision:
+                return {"type": "text", "text": "[screenshot omitted: model has no image input]"}
             if id(part) in keep:
                 return _image(part)
             return {"type": "text", "text": "[older screenshot omitted]"}
@@ -101,6 +114,10 @@ class OpenAIProvider:
                         }
                         for c in calls
                     ]
+                if msg.raw_provider == self.name and isinstance(msg.raw, dict):
+                    for name in self.replay_fields:
+                        if name in msg.raw:
+                            entry[name] = msg.raw[name]
                 wire.append(entry)
                 continue
             follow_up: list[dict[str, Any]] = []
@@ -149,7 +166,7 @@ class OpenAIProvider:
                 }
                 for t in tools
             ],
-            "max_completion_tokens": max_output_tokens,
+            self.max_tokens_field: max_output_tokens,
         }
 
     def complete(
@@ -186,6 +203,7 @@ class OpenAIProvider:
                 int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
             ),
             stop_reason=str(choices[0].get("finish_reason") or ""),
+            raw=message,
             refusal=str(message.get("refusal") or ""),
         )
 
