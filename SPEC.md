@@ -99,10 +99,11 @@ pixels; perception records the scale and the loop converts if a model answers in
 ```python
 class Backend(Protocol):
     name: str
-    def capabilities(self) -> frozenset[Capability]: ...      # SCREENSHOT, UI_TREE, CLIPBOARD, ...
-    def screen_size(self) -> Size: ...                          # points, portrait-normalised
-    def screenshot(self) -> Image: ...                          # PNG bytes + pixel size + scale
-    def ui_tree(self) -> UINode | None: ...                     # None if unsupported
+
+    def capabilities(self) -> frozenset[Capability]: ...  # SCREENSHOT, UI_TREE, CLIPBOARD, ...
+    def screen_size(self) -> Size: ...  # points, portrait-normalised
+    def screenshot(self) -> Image: ...  # PNG bytes + pixel size + scale
+    def ui_tree(self) -> UINode | None: ...  # None if unsupported
     def tap(self, x: float, y: float) -> None: ...
     def long_press(self, x: float, y: float, duration_ms: int) -> None: ...
     def swipe(self, x1: float, y1: float, x2: float, y2: float, duration_ms: int) -> None: ...
@@ -112,7 +113,7 @@ class Backend(Protocol):
     def open_url(self, url: str) -> None: ...
     def clipboard_get(self) -> str: ...
     def clipboard_set(self, text: str) -> None: ...
-    def foreground_app(self) -> str | None: ...                 # bundle id, for permissions
+    def foreground_app(self) -> str | None: ...  # bundle id, for permissions
     def close(self) -> None: ...
 ```
 
@@ -207,8 +208,10 @@ until done | budget exhausted | kill switch | fatal error
 ```python
 class Provider(Protocol):
     name: str
-    def complete(self, system: str, messages: list[Message], tools: list[ToolSpec],
-                 max_output_tokens: int) -> Completion: ...   # text, tool calls, usage, stop reason
+
+    def complete(
+        self, system: str, messages: list[Message], tools: list[ToolSpec], max_output_tokens: int
+    ) -> Completion: ...  # text, tool calls, usage, stop reason
 ```
 
 Messages use a neutral internal format (text, image, tool_call, tool_result parts); each provider
