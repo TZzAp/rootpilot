@@ -98,6 +98,10 @@ def test_wrong_token_and_bad_host_are_rejected(flow: Live) -> None:
     assert flow.req("GET", f"/{TOKEN}/api/status", host="evil.example")[0] == 421
     code, page = flow.req("GET", f"/{TOKEN}/")
     assert code == 200 and "RootPilot" in page and "__BASE__" not in page
+    conn = http.client.HTTPConnection("127.0.0.1", flow.port, timeout=5)
+    conn.request("GET", f"/{TOKEN}/", headers={"Host": f"127.0.0.1:{flow.port}"})
+    assert conn.getresponse().getheader("Cache-Control") == "no-store"
+    conn.close()
 
 
 def test_refuses_non_loopback_bind() -> None:
@@ -148,6 +152,7 @@ def test_info_and_history(flow: Live) -> None:
     assert code == 200
     assert info["provider"] == "anthropic" and info["backend"] == "mock"
     assert info["model"] == "claude-opus-5-5" and info["overlay"]["installed"] is False
+    assert info["started"] == flow.server.started
     assert SECRET_KEY not in json.dumps(info)  # the page never sees keys
     assert flow.req("GET", f"/{TOKEN}/api/runs") == (200, [])
     flow.req("POST", f"/{TOKEN}/api/run", {"task": "iOS version?"})

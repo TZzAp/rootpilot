@@ -17,6 +17,7 @@ import ipaddress
 import json
 import secrets
 import threading
+import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -165,6 +166,7 @@ class ControlServer:
         self.state = ControlState()
         self._build = build_agent
         self.token = token or _load_token()
+        self.started = time.time()  # lets an open page notice a restart and reload itself
 
     def start_run(self, task: str) -> bool:
         with self.state.lock:
@@ -225,6 +227,7 @@ class ControlServer:
             addrs = listening_addresses(self.cfg.zxtouch_port)
             zxtouch = None if addrs is None else (bool(addrs) and not is_exposed(addrs))
         return {
+            "started": self.started,
             "version": __version__,
             "provider": provider,
             "model": model,
@@ -264,6 +267,7 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
 

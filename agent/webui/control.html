@@ -147,7 +147,10 @@ function classify(line){
 }
 function renderLog(lines){
   const log = $("#log");
-  if (!lines.length){ return; }
+  if (!lines.length){
+    log.innerHTML = '<span class="muted">No run yet. Enter a task and press Start.</span>';
+    return;
+  }
   log.innerHTML = lines.map(l=>{
     const c = classify(l);
     const esc = l.replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
@@ -173,7 +176,7 @@ async function refresh(){
     rc.classList.toggle("bad", !s.result.success);
     rc.innerHTML = `<div><b>${s.result.success?"✅ Done":"⚠️ Ended"}</b> · ${s.result.reason} · ${s.result.steps} steps</div>
       <div style="margin-top:6px">${s.result.answer.replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]))}</div>`;
-  } else if (running){ rc.classList.add("hide"); }
+  } else { rc.classList.add("hide"); }
 
   // pending confirm / ask
   const pc = $("#pendingCard");
@@ -215,8 +218,12 @@ $("#clear").onclick = () => { $("#log").innerHTML = '<span class="muted">cleared
 
 const esc = s => String(s ?? "").replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
 
+let serverStarted = null;
 async function loadInfo(){
   let i; try { i = await api("api/info"); } catch(e){ return; }
+  // The server restarted (e.g. after an update): load the new page instead of a stale one.
+  if (serverStarted !== null && i.started !== serverStarted) { location.reload(); return; }
+  serverStarted = i.started;
   const chips = [];
   if (i.config_error) chips.push(`<span class="chip bad">config: ${esc(i.config_error)}</span>`);
   else chips.push(`<span class="chip">${esc(i.provider)} · ${esc(i.model)}</span>`, `<span class="chip">${esc(i.backend)}</span>`);
