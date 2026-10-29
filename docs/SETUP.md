@@ -29,47 +29,73 @@ The only Python Procursus offers for iOS 16 rootful is **3.9.9**, which RootPilo
 
 ```sh
 sudo apt update
-sudo apt install python3 uikittools network-cmds
+sudo apt install python3 uikittools network-cmds ldid
 python3 --version        # expect 3.9.x
 ```
 
 `uikittools` provides `uiopen` (used to open URLs); `network-cmds` provides `netstat` (used by
-`rootpilot doctor` to check that ZXTouch is not exposed).
+`rootpilot doctor` to check that ZXTouch is not exposed); `ldid` re-signs the patched ZXTouch.
 
 ## 3. Install ZXTouch — bound to loopback
 
 Upstream ZXTouch listens on **all interfaces** (`#define ADDR "0.0.0.0"` in
-`pccontrol/SocketServer.h`), port 6000, with no authentication. Build it bound to `127.0.0.1`
-instead:
+`pccontrol/SocketServer.h`), port 6000, with no authentication, and its install script gives
+`mobile` passwordless root for `/usr/bin/zxtouchb`. The old repo (`zxtouch.net`) is gone; the
+package is on [GitHub releases](https://github.com/xuan32546/IOS13-SimulateTouch/releases).
 
-1. On a computer with [Theos](https://theos.dev) set up:
+### 3a. Patch the prebuilt package (what the reference device uses)
 
-   ```sh
-   git clone https://github.com/xuan32546/IOS13-SimulateTouch zxtouch && cd zxtouch
-   sed -i.bak 's/#define ADDR "0.0.0.0"/#define ADDR "127.0.0.1"/' pccontrol/SocketServer.h
-   grep -n 'define ADDR' pccontrol/SocketServer.h     # must show 127.0.0.1
-   make package FINALPACKAGE=1
-   ```
+Verified on the reference device (iPhone X, iOS 16.7.11, palera1n rootful, ElleKit) on
+2026-10-29: touch, swipe, app launch, screen size and text recognition all work.
 
-2. Copy the `.deb` from `packages/` to the device and install it:
+On your computer (needs `dpkg-deb` and the GitHub CLI):
 
-   ```sh
-   scp packages/*.deb mobile@<device-ip>:/tmp/
-   ssh mobile@<device-ip> 'sudo dpkg -i /tmp/*zxtouch*.deb && sudo sbreload'
-   ```
+```sh
+gh release download v0.0.7-10 -R xuan32546/IOS13-SimulateTouch -p '*.deb'
+python3 scripts/zxtouch_loopback.py com.zjx.ioscontrol_0.0.7-10_iphoneos-arm.deb
+scp com.zjx.ioscontrol_0.0.7-10+loopback_iphoneos-arm.deb mobile@<device-ip>:/tmp/
+```
 
-3. Check that it only listens on loopback (on the device):
+The script changes the bind address in all three architecture slices of `pccontrol.dylib` from
+`0.0.0.0` to `127.1` (which `inet_addr()` reads as 127.0.0.1 and which fits in the same
+bytes), drops the sudoers line from `postinst`, and repacks with root ownership.
 
-   ```sh
-   netstat -an -p tcp | grep '\.6000 '
-   # good: 127.0.0.1.6000 ... LISTEN
-   # bad:  *.6000         ... LISTEN   ← reachable from your Wi-Fi
-   ```
+On the device: install it, re-sign the patched tweak (patching invalidates its signature), and
+restart SpringBoard:
 
-> **Untested on iOS 16.** ZXTouch was written for iOS 11–14. If it does not load, or touches
-> don't register, stop here and wait for the M2 helper; please open an issue with what you saw.
-> If you install the prebuilt package from the ZXTouch repo instead, it **will** listen on all
-> interfaces: only enable it on a network you trust, and uninstall it when you're not using it.
+```sh
+sudo apt install ldid
+sudo dpkg -i /tmp/com.zjx.ioscontrol_0.0.7-10+loopback_iphoneos-arm.deb
+sudo ldid -S /Library/MobileSubstrate/DynamicLibraries/pccontrol.dylib
+sudo sbreload
+```
+
+### 3b. Or build from source
+
+With [Theos](https://theos.dev):
+
+```sh
+git clone https://github.com/xuan32546/IOS13-SimulateTouch zxtouch && cd zxtouch
+sed -i.bak 's/#define ADDR "0.0.0.0"/#define ADDR "127.0.0.1"/' pccontrol/SocketServer.h
+make package FINALPACKAGE=1
+```
+
+Remove the `sudoers` line from the package's `postinst` before installing.
+
+### 3c. Check it
+
+On the device:
+
+```sh
+netstat -an -p tcp | grep '\.6000 '
+# good: tcp4  0  0  127.0.0.1.6000   *.*   LISTEN
+# bad:  tcp4  0  0  *.6000           *.*   LISTEN   ← reachable from your Wi-Fi
+```
+
+And from your computer, `nc -vz <device-ip> 6000` must fail with "connection refused".
+
+> If you install the unpatched package, it **will** listen on all interfaces: only enable it on
+> a network you trust, and uninstall it when you're not using it.
 
 ## 4. Install RootPilot
 
@@ -123,7 +149,8 @@ cd ~/rootpilot && python3 -m agent doctor
 
 Every line should say `ok`. In particular:
 
-- `backend  zxtouch: 375x812 points; …` — ZXTouch answered on loopback.
+- `backend  zxtouch: 375x812 points; …` — ZXTouch answered on loopback (it works in pixels;
+  RootPilot converts to points using the screen scale).
 - `zxtouch exposure  loopback only` — if this says **FAIL**, go back to step 3.
 
 ## 7. M0 smoke test

@@ -308,10 +308,10 @@ rootpilot/
 ## 7. Open questions
 1. ~~Reference device jailbreak~~ — confirmed 2026-10-29: palera1n rootful. M5 must therefore
    also build an `iphoneos-arm` (rootful) package, not only rootless/RootHide.
-2. ZXTouch is not installed and not in the device's configured repos; it must be added from its
-   own repo (`https://zxtouch.net`) or built, and its wire protocol (task codes, coordinate
-   scaling, text input, screen size query) verified on device in M0. Whether it works on iOS 16
-   with ElleKit is unverified; if it doesn't, M2's helper becomes the M0 path.
+2. ~~ZXTouch on iOS 16~~ — verified 2026-10-29 on the reference device with 0.0.7-10, patched to
+   bind 127.0.0.1 (`scripts/zxtouch_loopback.py`): touch, swipe, launch, screen size/scale and
+   OCR work; it works in pixels (scale 3) and the backend converts to points. Text input not yet
+   tested on iOS 16.
 3. ~~Procursus Python version~~ — 3.9.9 is the only candidate; spec lowered to >= 3.9.
 
 ## 8. Legal and provider terms
