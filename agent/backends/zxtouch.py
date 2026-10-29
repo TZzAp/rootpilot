@@ -162,22 +162,18 @@ class ZXTouchBackend:
         self._touch(proto.TOUCH_UP, x, y)
 
     def swipe(self, x1: float, y1: float, x2: float, y2: float, duration_ms: int) -> None:
-        # Hold still before lifting so lists stop where the finger stops instead of gliding on;
-        # otherwise the next observation is taken mid-scroll and taps land on the wrong row.
-        self._drag(x1, y1, x2, y2, duration_ms, hold_ms=250)
-
-    def _drag(
-        self, x1: float, y1: float, x2: float, y2: float, duration_ms: int, hold_ms: int
-    ) -> None:
-        steps = max(2, duration_ms // 16)
+        # Ease-out: the finger slows to a stop before lifting, so lists move exactly the swipe
+        # distance with no fling. A constant-speed swipe (even with a pause before lifting) left
+        # iOS 16 lists gliding for seconds, so observations were stale and taps hit the wrong
+        # row. Measured on an iPhone X: ease-out drift 0 pt; linear drift > 100 pt.
+        duration_ms = max(duration_ms, 400)
+        steps = max(8, duration_ms // 16)
         self._touch(proto.TOUCH_DOWN, x1, y1)
         for i in range(1, steps + 1):
-            t = i / steps
+            eased = 1 - (1 - i / steps) ** 3
             time.sleep(duration_ms / 1000 / steps)
-            self._touch(proto.TOUCH_MOVE, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
-        if hold_ms:
-            time.sleep(hold_ms / 1000)
-            self._touch(proto.TOUCH_MOVE, x2, y2)
+            self._touch(proto.TOUCH_MOVE, x1 + (x2 - x1) * eased, y1 + (y2 - y1) * eased)
+        time.sleep(0.15)
         self._touch(proto.TOUCH_UP, x2, y2)
 
     def type_text(self, text: str) -> None:

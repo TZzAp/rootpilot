@@ -147,12 +147,14 @@ def test_zxtouch_backend_round_trip(fake_zx: FakeZXTouch) -> None:
         # Touches get no reply; a request that does guarantees the fake has seen them all.
         dev._request(proto.encode(proto.TASK_GET_DEVICE_INFO, proto.DEVICE_INFO_SCREEN_SIZE))
 
-    # scroll swipes hold still before lifting
+    # swipes ease out: steps shrink toward the end and stop exactly on the target
     fake_zx.received.clear()
     dev.swipe(100, 600, 100, 300, 50)
     flush()
-    moves = [line for line in fake_zx.received if line.startswith(b"1012")]
-    assert moves[-1] == moves[-2] == b"1012050300009000"
+    ys = [int(line[-5:]) for line in fake_zx.received if line.startswith(b"1012")]
+    assert ys[-1] == 9000  # 300 pt -> 900 px, x10
+    steps = [a - b for a, b in zip(ys, ys[1:])]
+    assert steps[0] > steps[-1] >= 0
     fake_zx.received.clear()
     # home brings SpringBoard forward instead of a gesture (verified on iOS 16)
     dev.press_button(Button.HOME)
