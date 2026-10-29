@@ -44,7 +44,8 @@ def main() -> int:
     durations: list[float] = []
     for f in files:
         img = Image.open(f).convert("RGB")
-        img = img.resize((args.width, round(img.height * args.width / img.width)), Image.LANCZOS)
+        size = (args.width, round(img.height * args.width / img.width))
+        img = img.resize(size, Image.Resampling.LANCZOS)
         if kept and not changed(kept[-1], img, args.threshold):
             durations[-1] += frame_ms  # extend the previous frame instead of repeating it
             continue
