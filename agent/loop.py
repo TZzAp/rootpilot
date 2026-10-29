@@ -13,6 +13,7 @@ from agent.audit import AuditLog
 from agent.backends.base import Backend
 from agent.config import Config
 from agent.errors import BackendError, BackendUnsupported, ProviderError, ToolInputError
+from agent.indicator import Indicator, NullIndicator
 from agent.perception.axtree import RenderedTree, render
 from agent.perception.image import downscale
 from agent.permissions import Decision, PermissionContext, PermissionEngine, Rule, Verdict
@@ -113,6 +114,7 @@ class Agent:
     )
     clock: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
+    indicator: Indicator = field(default_factory=NullIndicator)
 
     rendered: Optional[RenderedTree] = field(default=None, init=False)
     root: Optional[UINode] = field(default=None, init=False)
@@ -219,7 +221,10 @@ class Agent:
             },
         )
 
+        self.indicator.start(task)
+
         def finish(answer: str, success: bool, reason: str) -> RunResult:
+            self.indicator.stop()
             result = RunResult(self.run_id, answer, success, reason, steps, usage, self.audit.path)
             self.audit.event(
                 "run_end",
@@ -377,7 +382,9 @@ class Agent:
             self.report(f"⛔ {call.name}: {decision.reason}")
             return ToolOutcome.text(f"Not allowed: {decision.reason}", is_error=True)
 
-        self.report(f"→ {self._describe(call.name, args)}")
+        description = self._describe(call.name, args)
+        self.report(f"→ {description}")
+        self.indicator.update(description)
         before = self.rendered.text if self.rendered else None
         before_app = self.foreground_app()
         tctx = ToolContext(

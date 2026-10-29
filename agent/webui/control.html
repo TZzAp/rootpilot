@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RootPilot">
+<title>RootPilot</title>
+<style>
+  :root {
+    --bg:#0b0d10; --panel:#15181d; --panel2:#1c2027; --line:#2a2f37;
+    --fg:#e8ebef; --dim:#9aa3af; --accent:#4da3ff; --ok:#39d98a; --warn:#ffb020; --bad:#ff5c5c;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:#f4f6f9; --panel:#fff; --panel2:#eef1f5; --line:#dde2e8;
+      --fg:#10141a; --dim:#5a6572; --accent:#0a66d6;
+    }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    max-width:620px; margin:0 auto;
+  }
+  header { display:flex; align-items:center; gap:10px; margin:6px 0 16px; }
+  header .dot { width:12px; height:12px; border-radius:50%; background:var(--dim); flex:none; }
+  header .dot.on { background:var(--ok); box-shadow:0 0 10px var(--ok); animation:pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  h1 { font-size:19px; margin:0; font-weight:650; letter-spacing:.2px; }
+  header .state { margin-left:auto; font-size:13px; color:var(--dim); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:14px; }
+  textarea {
+    width:100%; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    border-radius:10px; padding:11px; font:inherit; resize:vertical; min-height:62px;
+  }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  .row { display:flex; gap:10px; margin-top:10px; }
+  button {
+    font:inherit; font-weight:600; border:none; border-radius:10px; padding:12px 16px;
+    color:#fff; background:var(--accent); flex:1; cursor:pointer; transition:filter .15s,opacity .15s;
+  }
+  button:active { filter:brightness(.9); }
+  button:disabled { opacity:.4; }
+  button.ghost { background:var(--panel2); color:var(--fg); border:1px solid var(--line); }
+  button.stop { background:var(--bad); }
+  button.ok { background:var(--ok); color:#06240f; }
+  button.warn { background:var(--warn); color:#3a2600; }
+  .log { background:#05070a; border:1px solid var(--line); border-radius:10px; padding:12px;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap;
+    word-break:break-word; max-height:46vh; overflow:auto; color:#cdd6e0; }
+  @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .log{ background:#0b0d10; } }
+  .log .act { color:var(--accent); } .log .think { color:var(--dim); }
+  .log .deny { color:var(--bad); } .log .warnln { color:var(--warn); }
+  .muted { color:var(--dim); font-size:13px; }
+  .result { border-left:3px solid var(--ok); padding-left:12px; }
+  .result.bad { border-color:var(--warn); }
+  .pending { border:1px solid var(--warn); background:rgba(255,176,32,.08); }
+  .pending .reason { color:var(--warn); margin:6px 0 12px; font-weight:600; }
+  .quick { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .quick button { flex:none; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    font-weight:500; font-size:13px; padding:8px 12px; }
+  .hide { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>RootPilot</h1>
+  <span class="state" id="state">idle</span>
+</header>
+
+<div class="card" id="composer">
+  <textarea id="task" placeholder="Tell RootPilot what to do on this iPhone…
+e.g. open Settings and tell me the iOS version"></textarea>
+  <div class="quick" id="quick"></div>
+  <div class="row">
+    <button id="start">Start</button>
+  </div>
+</div>
+
+<div class="card pending hide" id="pendingCard">
+  <div><b id="pendTitle">Confirm action</b></div>
+  <div class="reason" id="pendReason"></div>
+  <input id="askInput" class="hide" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:inherit" placeholder="Your answer…">
+  <div class="row" id="confirmRow">
+    <button class="ok" data-a="yes">Allow</button>
+    <button class="stop" data-a="no">Deny</button>
+    <button class="warn hide" data-a="always" id="alwaysBtn">Always</button>
+  </div>
+</div>
+
+<div class="card result hide" id="resultCard"></div>
+
+<div class="card" id="runCard">
+  <div class="row" style="margin:0 0 10px">
+    <button class="stop hide" id="stop">Stop run</button>
+    <button class="ghost" id="clear">Clear log</button>
+  </div>
+  <div class="log" id="log"><span class="muted">No run yet. Enter a task and press Start.</span></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (p, body) => fetch(p, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : {}).then(r=>r.json());
+const QUICK = [
+  "open Settings and tell me the iOS version",
+  "what is my battery percentage?",
+  "open the Clock app and tell me what alarms are set",
+];
+
+const quick = $("#quick");
+for (const q of QUICK) {
+  const b = document.createElement("button");
+  b.textContent = q.length > 34 ? q.slice(0,32)+"…" : q;
+  b.title = q; b.onclick = () => { $("#task").value = q; $("#task").focus(); };
+  quick.appendChild(b);
+}
+
+function classify(line){
+  if (line.startsWith("→")) return "act";
+  if (line.startsWith("💭")) return "think";
+  if (line.startsWith("⛔")) return "deny";
+  if (line.startsWith("⚠")) return "warnln";
+  return "";
+}
+function renderLog(lines){
+  const log = $("#log");
+  if (!lines.length){ return; }
+  log.innerHTML = lines.map(l=>{
+    const c = classify(l);
+    const esc = l.replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
+    return c ? `<span class="${c}">${esc}</span>` : esc;
+  }).join("\n");
+  log.scrollTop = log.scrollHeight;
+}
+
+let lastPending = null;
+async function tick(){
+  let s; try { s = await api("api/status"); } catch(e){ $("#state").textContent="offline"; return; }
+  const running = s.running;
+  $("#dot").classList.toggle("on", running);
+  $("#state").textContent = running ? "running" : (s.result ? s.result.reason : "idle");
+  $("#start").disabled = running;
+  $("#stop").classList.toggle("hide", !running);
+  renderLog(s.lines || []);
+
+  // result
+  const rc = $("#resultCard");
+  if (s.result && !running){
+    rc.classList.remove("hide");
+    rc.classList.toggle("bad", !s.result.success);
+    rc.innerHTML = `<div><b>${s.result.success?"✅ Done":"⚠️ Ended"}</b> · ${s.result.reason} · ${s.result.steps} steps</div>
+      <div style="margin-top:6px">${s.result.answer.replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]))}</div>`;
+  } else if (running){ rc.classList.add("hide"); }
+
+  // pending confirm / ask
+  const pc = $("#pendingCard");
+  if (s.pending){
+    pc.classList.remove("hide");
+    lastPending = s.pending;
+    const isAsk = s.pending.kind === "ask";
+    $("#pendTitle").textContent = isAsk ? "RootPilot is asking" : `Allow “${s.pending.tool}”?`;
+    $("#pendReason").textContent = s.pending.reason;
+    $("#askInput").classList.toggle("hide", !isAsk);
+    $("#confirmRow").classList.toggle("hide", isAsk);
+    $("#alwaysBtn").classList.toggle("hide", !s.pending.allow_always);
+    if (isAsk && !$("#askInput").dataset.wired){
+      $("#askInput").dataset.wired = "1";
+      $("#askInput").onkeydown = e => { if(e.key==="Enter"){ answer($("#askInput").value); } };
+    }
+  } else { pc.classList.add("hide"); lastPending = null; }
+}
+
+async function answer(value){
+  if (!lastPending) return;
+  await api("api/confirm", {id:lastPending.id, answer:value});
+  $("#askInput").value = "";
+  lastPending = null; $("#pendingCard").classList.add("hide");
+  tick();
+}
+document.querySelectorAll("#confirmRow button").forEach(b=> b.onclick = ()=>answer(b.dataset.a));
+$("#askInput").addEventListener("keydown", e=>{ if(e.key==="Enter") answer($("#askInput").value); });
+
+$("#start").onclick = async () => {
+  const task = $("#task").value.trim();
+  if (!task) return;
+  $("#resultCard").classList.add("hide");
+  const r = await api("api/run", {task});
+  if (r.error) alert(r.error); else tick();
+};
+$("#stop").onclick = () => api("api/stop", {}).then(tick);
+$("#clear").onclick = () => { $("#log").innerHTML = '<span class="muted">cleared</span>'; };
+
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

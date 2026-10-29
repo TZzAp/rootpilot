@@ -212,6 +212,10 @@ class ZXTouchBackend:
         if result.returncode != 0:
             raise BackendError(f"uiopen failed: {result.stderr.strip() or result.returncode}")
 
+    def toast(self, text: str, duration: float = 3.0) -> None:
+        """Show a banner on the device. Used by the agent-active indicator; best-effort."""
+        self._request(proto.toast(text, max(1, int(duration))))
+
     def clipboard_get(self) -> str:
         raise BackendUnsupported("ZXTouch has no working clipboard API")
 

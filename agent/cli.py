@@ -14,8 +14,9 @@ from agent.audit import AuditLog
 from agent.backends.base import Backend
 from agent.config import Config, default_config_path, load_config
 from agent.errors import RootPilotError
+from agent.indicator import make_indicator
 from agent.loop import ALWAYS, NO, YES, Agent, RunResult
-from agent.paths import ensure_private_dir, jbroot, state_dir, stop_file
+from agent.paths import ensure_private_dir, hud_file, jbroot, state_dir, stop_file
 from agent.permissions import Decision, PermissionEngine, Rule
 from agent.providers import PROVIDERS, make_provider
 from agent.redact import MASK, Redactor
@@ -201,6 +202,33 @@ def make_agent(cfg: Config, args: argparse.Namespace, out: TextIO, interactive: 
     )
     agent.audit = AuditLog.for_run(sd, agent.run_id, redactor)
     agent.screens_dir = sd / "runs" / agent.run_id
+    agent.indicator = make_indicator(backend, hud_file(), redactor.text)
+    return agent
+
+
+def make_agent_for_serve(state: Any) -> Agent:
+    """Build an agent whose prompts and output are routed to the control page."""
+    from agent.serve import server_ask, server_confirm
+
+    cfg = load_config()
+    redactor = Redactor(cfg.secrets())
+    backend = make_backend(cfg, None)
+    sd = ensure_private_dir(state_dir())
+    agent = Agent(
+        backend=backend,
+        provider=make_provider(cfg, redactor),
+        registry=default_registry(),
+        permissions=PermissionEngine(cfg),
+        config=cfg,
+        confirm=server_confirm(state),
+        ask_user=server_ask(state),
+        redactor=redactor,
+        report=state.report,
+        stop_file=stop_file(),
+    )
+    agent.audit = AuditLog.for_run(sd, agent.run_id, redactor)
+    agent.screens_dir = sd / "runs" / agent.run_id
+    agent.indicator = make_indicator(backend, hud_file(), redactor.text)
     return agent
 
 
@@ -289,12 +317,46 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument(
         "--key-stdin", action="store_true", help="read the API key from stdin (for scripts)"
     )
+    p_serve = sub.add_parser(
+        "serve", parents=[common], help="start the loopback control page (for the home icon)"
+    )
+    p_serve.add_argument("--port", type=int, help="port on 127.0.0.1 (default 8366)")
+    p_icon = sub.add_parser(
+        "install-icon", parents=[common], help="add (or --remove) the RootPilot home-screen icon"
+    )
+    p_icon.add_argument("--port", type=int, help="port the control server uses (default 8366)")
+    p_icon.add_argument("--remove", action="store_true", help="remove the icon")
     return parser
+
+
+def install_icon(args: argparse.Namespace, out: TextIO) -> int:
+    from agent.serve import _load_token
+    from agent.webclip import WEBCLIPS, install_webclip, refresh_icons, remove_webclip
+
+    if args.remove:
+        removed = remove_webclip()
+        error = refresh_icons()
+        out.write("Icon removed.\n" if removed else "No RootPilot icon installed.\n")
+        if error:
+            out.write(f"note: {error}\n")
+        return 0
+    if not WEBCLIPS.parent.exists():
+        out.write(f"error: {WEBCLIPS.parent} not found; run this on the iPhone\n")
+        return 1
+    cfg = _load(args)
+    port = args.port or cfg.serve_port
+    url = f"http://127.0.0.1:{port}/{_load_token()}/"
+    bundle = install_webclip(url)
+    error = refresh_icons()
+    out.write(f"Installed {bundle}\nIt opens the control page; keep `rootpilot serve` running.\n")
+    if error:
+        out.write(f"note: {error}\n")
+    return 0
 
 
 def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
     args = build_parser().parse_args(argv)
-    for name in ("yes_to", "max_steps", "save_screens", "key_stdin"):
+    for name in ("yes_to", "max_steps", "save_screens", "key_stdin", "port", "remove"):
         if not hasattr(args, name):
             setattr(args, name, None)
     try:
@@ -306,6 +368,15 @@ def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
             from agent.setup_wizard import setup
 
             return setup(args, out)
+        if args.command == "serve":
+            from agent.serve import run_server
+
+            cfg = _load(args)
+            if args.port:
+                cfg.serve_port = args.port
+            return run_server(cfg, out)
+        if args.command == "install-icon":
+            return install_icon(args, out)
         return repl(args, out)
     except (RootPilotError, NotImplementedError) as exc:
         out.write(f"error: {Redactor().text(str(exc))}\n")

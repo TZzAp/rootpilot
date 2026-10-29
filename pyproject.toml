@@ -27,6 +27,7 @@ include = ["agent*"]
 
 [tool.setuptools.package-data]
 "agent.demo" = ["screens/*.json"]
+"agent.webui" = ["control.html", "icon.png"]
 
 [tool.ruff]
 target-version = "py39"
@@ -45,7 +46,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106", "S108", "S311"]
+"tests/*" = ["S104", "S105", "S106", "S108", "S311"]
 
 [tool.mypy]
 # mypy >= 2 cannot target 3.9; ruff (py39) and the 3.9 CI test job cover 3.9 compatibility.

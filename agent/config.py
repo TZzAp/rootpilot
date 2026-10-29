@@ -26,6 +26,7 @@ _ENV = {
     "ROOTPILOT_COMPAT_API_KEY": "compat_api_key",
     "ROOTPILOT_ZXTOUCH_HOST": "zxtouch_host",
     "ROOTPILOT_ZXTOUCH_PORT": "zxtouch_port",
+    "ROOTPILOT_SERVE_PORT": "serve_port",
 }
 
 
@@ -44,6 +45,7 @@ class Config:
 
     zxtouch_host: str = "127.0.0.1"
     zxtouch_port: int = 6000
+    serve_port: int = 8366  # loopback-only control server (rootpilot serve)
 
     max_steps: int = 40
     max_tokens: int = 400_000

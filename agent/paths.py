@@ -45,6 +45,15 @@ def stop_file(env: Optional[Mapping[str, str]] = None) -> Path:
     return state_dir(env) / "STOP"
 
 
+def hud_file(env: Optional[Mapping[str, str]] = None) -> Path:
+    """State the SpringBoard HUD overlay reads: whether the agent is active and its step."""
+    return state_dir(env) / "hud.json"
+
+
+def serve_token_file(env: Optional[Mapping[str, str]] = None) -> Path:
+    return state_dir(env) / "serve_token"
+
+
 def ensure_private_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     os.chmod(path, 0o700)

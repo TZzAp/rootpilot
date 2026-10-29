@@ -19,6 +19,7 @@ TASK_PERFORM_TOUCH = 10
 TASK_PROCESS_BRING_FOREGROUND = 11
 TASK_KEYBOARD = 24
 TASK_GET_DEVICE_INFO = 25
+TASK_SHOW_TOAST = 22
 TASK_TEXT_RECOGNIZER = 27
 # TASK_RUN_SHELL (13) exists upstream and runs commands as root. RootPilot never sends it.
 
@@ -74,6 +75,11 @@ def touch(events: Sequence[str]) -> bytes:
     if not 1 <= len(events) <= 9:
         raise ProtocolError("1–9 touch events per packet")
     return encode(TASK_PERFORM_TOUCH, str(len(events)) + "".join(events))
+
+
+def toast(content: str, duration: int, toast_type: int = 0, position: int = 0) -> bytes:
+    """Fields: type, content, duration (s), position (0 top / 1 bottom), font size. VERIFY style."""
+    return encode(TASK_SHOW_TOAST, toast_type, content, duration, position, 0)
 
 
 def ocr_request(x: float, y: float, width: float, height: float) -> bytes:
