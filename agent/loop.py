@@ -33,7 +33,11 @@ from agent.types import (
 
 UNTRUSTED_OPEN = "<untrusted_screen_content>"
 UNTRUSTED_CLOSE = "</untrusted_screen_content>"
-SETTLE_SECONDS = 0.6
+# How long to let the screen settle before re-observing. Scrolls need longer: on a real iPhone a
+# list pulled past its end bounces back for ~0.5 s, and observing mid-bounce gave stale
+# positions (a tap meant for "General" opened "Focus").
+SETTLE_SECONDS = {"swipe": 1.2, "launch_app": 1.5, "open_url": 1.5, "press_button": 1.0}
+DEFAULT_SETTLE_SECONDS = 0.6
 
 # Answer from the confirm callback: run once, refuse, or allow this category for the run.
 YES, NO, ALWAYS = "yes", "no", "always"
@@ -390,6 +394,8 @@ class Agent:
 
         if call.name == "launch_app" and not outcome.is_error:
             self.last_launched = str(args.get("bundle_id"))
+        if call.name == "press_button" and args.get("button") == "home" and not outcome.is_error:
+            self.last_launched = "com.apple.springboard"
         if tool.category in (Category.CLIPBOARD_READ, Category.SHELL) and not outcome.is_error:
             outcome = ToolOutcome(
                 [
@@ -401,7 +407,7 @@ class Agent:
             )
 
         if tool.changes_screen and not outcome.is_error:
-            self.sleep(SETTLE_SECONDS)
+            self.sleep(SETTLE_SECONDS.get(call.name, DEFAULT_SETTLE_SECONDS))
             observation = self.observe()
             after = self.rendered.text if self.rendered else None
             if before is not None and after == before and self.foreground_app() == before_app:

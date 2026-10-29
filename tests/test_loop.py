@@ -254,6 +254,19 @@ def test_unchanged_screen_is_flagged(mock_device: MockBackend, tmp_path: Path) -
     assert "did not change" in provider.requests[-1][2][-1]
 
 
+def test_settle_time_depends_on_action(mock_device: MockBackend, tmp_path: Path) -> None:
+    steps = [
+        _call("swipe", {"x1": 187, "y1": 600, "x2": 187, "y2": 300}),
+        _call("tap", {"x": 5, "y": 5}),
+        _call("done", {"answer": "x", "success": True}),
+    ]
+    agent, _, _ = make_agent(mock_device, steps, tmp_path)
+    slept: list[float] = []
+    agent.sleep = slept.append
+    agent.run("scroll then tap")
+    assert slept == [1.2, 0.6]
+
+
 def test_refusal_ends_run(mock_device: MockBackend, tmp_path: Path) -> None:
     def refuse(messages: list[Message]) -> Completion:
         return Completion("", [], Usage(), stop_reason="refusal", refusal="cyber")

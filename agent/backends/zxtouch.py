@@ -2,7 +2,7 @@
 
 ZXTouch gives us touch, text input, app launch, screen size and OCR, but no screenshots, UI tree,
 hardware buttons or foreground-app query. The UI tree here is synthesised from OCR, and "home"
-is the bottom-edge swipe gesture. Only loopback hosts are accepted: ZXTouch has no
+brings SpringBoard to the foreground. Only loopback hosts are accepted: ZXTouch has no
 authentication and can run root shell commands, so it must never be reachable from the network.
 """
 
@@ -21,6 +21,7 @@ from agent.paths import jbroot
 from agent.types import Button, Capability, Image, Rect, Size, UINode
 
 _FINGER = 5
+SPRINGBOARD = "com.apple.springboard"
 _MAX_REPLY = 1 << 20
 
 
@@ -191,10 +192,9 @@ class ZXTouchBackend:
     def press_button(self, button: Button) -> None:
         if button is not Button.HOME:
             raise BackendUnsupported(f"ZXTouch cannot press the {button.value} button")
-        # Face ID iPhones: swipe up from the home indicator.
-        size = self.screen_size()
-        cx = size.width / 2
-        self._drag(cx, size.height - 2, cx, size.height * 0.55, 250, hold_ms=0)  # a flick
+        # The home-indicator swipe doesn't work with injected touches on iOS 16 (iOS treats it
+        # as an ordinary scroll), but bringing SpringBoard to the foreground does.
+        self.launch_app(SPRINGBOARD)
 
     def launch_app(self, bundle_id: str) -> None:
         self._request(proto.encode(proto.TASK_PROCESS_BRING_FOREGROUND, bundle_id))
