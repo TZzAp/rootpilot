@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rootpilot"
+version = "0.1.0"
+description = "Open-source, on-device AI agent harness for jailbroken iPhones"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Operating System :: iOS",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "pytest"]
+
+[project.scripts]
+rootpilot = "agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "RUF"]
+ignore = [
+    "S101",   # assert is fine in tests
+    "S603",   # subprocess without shell: shell tool is permission-gated
+    "UP007",  # X | Y at runtime is not available on 3.9
+    "UP045",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S108"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+files = ["agent", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["device: needs a real jailbroken device (ROOTPILOT_DEVICE=1)"]
+addopts = "-ra"
