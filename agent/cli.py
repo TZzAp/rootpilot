@@ -364,6 +364,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_icon.add_argument("--port", type=int, help="port the control server uses (default 8366)")
     p_icon.add_argument("--remove", action="store_true", help="remove the icon")
+    sub.add_parser(
+        "daemon-plist",
+        parents=[common],
+        help="print a launchd plist that keeps the control page running (rootful or rootless)",
+    )
     return parser
 
 
@@ -415,6 +420,12 @@ def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
             return run_server(cfg, out)
         if args.command == "install-icon":
             return install_icon(args, out)
+        if args.command == "daemon-plist":
+            from agent.daemon import daemon_plist, install_path
+
+            out.write(daemon_plist().decode())
+            print(f"# install to {install_path()}", file=sys.stderr)
+            return 0
         return repl(args, out)
     except (RootPilotError, NotImplementedError) as exc:
         out.write(f"error: {Redactor().text(str(exc))}\n")

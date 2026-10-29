@@ -238,7 +238,11 @@ def listening_addresses(port: int = proto.DEFAULT_PORT) -> Optional[list[str]]:
     """Local addresses with a TCP listener on ``port`` (via netstat), or None if unknown."""
     netstat = shutil.which("netstat")
     if netstat is None:
-        return None
+        # Rootless jailbreaks keep it in /var/jb/usr/sbin, often not on PATH.
+        candidate = jbroot() / "usr" / "sbin" / "netstat"
+        if not candidate.exists():
+            return None
+        netstat = str(candidate)
     try:
         out = subprocess.run(
             [netstat, "-an", "-p", "tcp"], capture_output=True, text=True, timeout=5, check=False

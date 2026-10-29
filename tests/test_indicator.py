@@ -130,3 +130,20 @@ def test_webclip_install_and_remove(tmp_path: Path) -> None:
     assert not (tmp_path / "com.rootpilot.control.webclip").exists()
     assert remove_webclip(tmp_path) and not bundle.exists()
     assert not remove_webclip(tmp_path)
+
+
+def test_daemon_plist_follows_the_jailbreak_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    import plistlib
+    import sys
+
+    from agent import daemon
+
+    monkeypatch.setattr(daemon, "jbroot", lambda: Path("/var/jb"))
+    plist = plistlib.loads(daemon.daemon_plist())
+    assert plist["ProgramArguments"] == [sys.executable, "-m", "agent", "serve"]
+    assert plist["UserName"] == "mobile" and plist["KeepAlive"] is True
+    assert plist["EnvironmentVariables"]["PATH"].startswith("/var/jb/usr/bin:")
+    assert plist["StandardOutPath"] == "/var/mobile/.local/state/rootpilot/serve.log"
+    assert daemon.install_path() == Path("/var/jb/Library/LaunchDaemons/com.rootpilot.serve.plist")
+    monkeypatch.setattr(daemon, "jbroot", lambda: Path("/"))
+    assert daemon.install_path() == Path("/Library/LaunchDaemons/com.rootpilot.serve.plist")
