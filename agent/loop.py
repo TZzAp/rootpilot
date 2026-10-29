@@ -19,6 +19,7 @@ from agent.perception.image import downscale
 from agent.permissions import Decision, PermissionContext, PermissionEngine, Rule, Verdict
 from agent.providers.base import Provider
 from agent.redact import Redactor
+from agent.tools import targets
 from agent.tools.handlers import ToolContext, clipboard_fingerprint
 from agent.tools.registry import Category, Registry, ToolDef, ToolOutcome
 from agent.types import (
@@ -384,7 +385,7 @@ class Agent:
 
         description = self._describe(call.name, args)
         self.report(f"→ {description}")
-        self.indicator.update(description)
+        self.indicator.update(description, self._touch_point(call.name, args))
         before = self.rendered.text if self.rendered else None
         before_app = self.foreground_app()
         tctx = ToolContext(
@@ -430,6 +431,18 @@ class Agent:
             summary=self._summary(call.name, outcome),
         )
         return outcome
+
+    def _touch_point(self, name: str, args: dict) -> Optional[tuple[float, float]]:  # type: ignore[type-arg]
+        """Where the action will touch, for the overlay's ripple (None if unknown)."""
+        try:
+            if name == "swipe":
+                return (float(args["x1"]), float(args["y1"]))
+            if name in ("tap", "long_press") or (name == "type_text" and args.get("ref")):
+                t = targets.resolve(args, self.rendered, self.root)
+                return (t.x, t.y)
+        except (KeyError, TypeError, ValueError, ToolInputError):
+            return None
+        return None
 
     def _describe(self, name: str, args: dict) -> str:  # type: ignore[type-arg]
         if name in ("tap", "long_press", "type_text") and args.get("ref") and self.rendered:

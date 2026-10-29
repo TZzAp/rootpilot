@@ -16,12 +16,16 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 
+from agent.paths import jbroot
+
 NOTIFY_PREFIX = "com.rootpilot.hud"
+HUD_DYLIB = "Library/MobileSubstrate/DynamicLibraries/RootPilotHUD.dylib"
+Point = Optional[tuple[float, float]]
 
 
 class Indicator(Protocol):
     def start(self, task: str) -> None: ...
-    def update(self, text: str) -> None: ...
+    def update(self, text: str, point: Point = None) -> None: ...
     def stop(self) -> None: ...
 
 
@@ -29,7 +33,7 @@ class NullIndicator:
     """Does nothing (tests, and runs where no on-device signal is wanted)."""
 
     def start(self, task: str) -> None: ...
-    def update(self, text: str) -> None: ...
+    def update(self, text: str, point: Point = None) -> None: ...
     def stop(self) -> None: ...
 
 
@@ -65,8 +69,13 @@ class DeviceIndicator:
         self._active = False
         self._task = ""
 
-    def _write(self, step: str) -> None:
-        payload = {"active": self._active, "task": self._task, "step": step}
+    def _write(self, step: str, point: Point = None) -> None:
+        payload = {
+            "active": self._active,
+            "task": self._task,
+            "step": step,
+            "point": [round(point[0], 1), round(point[1], 1)] if point else None,
+        }
         try:
             self._hud.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._hud.with_name(self._hud.name + ".tmp")
@@ -90,10 +99,10 @@ class DeviceIndicator:
         self._notify(f"{NOTIFY_PREFIX}.active")
         self._banner("🤖 RootPilot is controlling this iPhone", 4)
 
-    def update(self, text: str) -> None:
+    def update(self, text: str, point: Point = None) -> None:
         if not self._active:
             return
-        self._write(self._redact(text)[:120])
+        self._write(self._redact(text)[:120], point)
         self._notify(f"{NOTIFY_PREFIX}.update")
 
     def stop(self) -> None:
@@ -105,6 +114,12 @@ class DeviceIndicator:
         self._banner("✓ RootPilot finished", 3)
 
 
+def hud_installed() -> bool:
+    return (jbroot() / HUD_DYLIB).exists()
+
+
 def make_indicator(backend: Any, hud_file: Path, redact: Callable[[str], str]) -> Indicator:
-    toast = getattr(backend, "toast", None)
+    # With the edge-glow overlay installed, skip the toast: it's text, and the agent reads the
+    # screen with OCR, so a banner would leak into its first observation.
+    toast = None if hud_installed() else getattr(backend, "toast", None)
     return DeviceIndicator(hud_file, toast=toast, redact=redact)
