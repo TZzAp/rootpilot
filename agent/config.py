@@ -45,7 +45,7 @@ class Config:
     max_steps: int = 40
     max_tokens: int = 400_000
     max_seconds: float = 600.0
-    max_output_tokens: int = 2048
+    max_output_tokens: int = 16000  # thinking counts toward this
     image_max_edge: int = 1280
     keep_screenshots: int = 3
     save_screens: bool = False

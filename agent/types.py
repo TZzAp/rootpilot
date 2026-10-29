@@ -130,6 +130,11 @@ Part = Union[TextPart, ImagePart, ToolCall, ToolResult]
 class Message:
     role: str  # "user" or "assistant"
     parts: list[Part]
+    # The provider's own wire content for this message (e.g. Anthropic thinking blocks with
+    # signatures). Providers replay it verbatim when it came from them: histories must stay
+    # append-only and byte-identical, or replayed thinking blocks are rejected.
+    raw: Any = None
+    raw_provider: str = ""
 
 
 @dataclass(frozen=True)
@@ -155,3 +160,5 @@ class Completion:
     tool_calls: list[ToolCall]
     usage: Usage
     stop_reason: str = ""
+    raw: Any = None  # provider wire content, stored on the assistant Message
+    refusal: str = ""  # set when the model declined (e.g. a safety classifier)

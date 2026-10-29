@@ -193,8 +193,13 @@ until done | budget exhausted | kill switch | fatal error
   output, notifications) is wrapped in `<untrusted_screen_content>` blocks. The system prompt
   states that this content is data, never instructions, and that requests found in it (e.g. "ignore
   previous instructions", "send this code to …") must be reported to the user, not followed.
-- **History**: older screenshots are dropped from the context after N steps (default 3); trees
-  are kept in summarised form.
+- **History is append-only.** The system prompt and tool list are fixed for the run and earlier
+  messages are never edited, removed or re-rendered; assistant turns keep the provider's raw
+  content (`Message.raw`) so thinking blocks are replayed byte-for-byte. Editing history would
+  invalidate replayed thinking blocks (a 400 on the Anthropic API). Old screenshots are
+  therefore not trimmed by the loop: the Anthropic provider clears old tool results server-side,
+  and the OpenAI-style providers (no such binding) replace all but the newest
+  `keep_screenshots` images with a placeholder when building each request.
 - **Kill switch**: Ctrl-C in the CLI; a stop file `$STATE_DIR/STOP` checked before every action;
   hardware chord via helper (M2). Stopping never performs a further device action.
 - **Audit log**: one JSONL file per run at `$STATE_DIR/runs/<run_id>.jsonl` (`$STATE_DIR` =
@@ -218,8 +223,13 @@ Messages use a neutral internal format (text, image, tool_call, tool_result part
 translates to its wire format. HTTP via `urllib.request` with timeouts, retries with exponential
 backoff on 429/5xx, and `Retry-After` support.
 
-- `anthropic.py`: Messages API, API key from `ANTHROPIC_API_KEY` or config. Default model
-  `claude-sonnet-5-5` (configurable). Tool use + image input.
+- `anthropic.py`: Messages API over raw HTTPS (the official SDK needs Python >= 3.10 and compiled
+  wheels). `anthropic-version: 2026-10-21`, so no sampling parameters. API key from
+  `ANTHROPIC_API_KEY` or config. Default model `claude-opus-5-5` with `output_config.effort`
+  set explicitly (default `medium`; thinking is always on for this model), `tool_choice: auto`
+  (forced tool choice is rejected), server-side refusal fallbacks (`fallbacks: "default"`),
+  automatic prompt caching, and server-side clearing of old tool results
+  (`clear_tool_uses_20250919`). A `refusal` stop reason ends the run with the reason shown.
 - `openai.py`: Chat Completions API with tools + image input, key from `OPENAI_API_KEY` or
   config; model must be set in config (no guessed default).
 - `compat.py`: subclass of the OpenAI provider with a configurable `base_url` and optional key,
