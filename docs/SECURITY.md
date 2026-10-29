@@ -84,6 +84,11 @@ in a secure field) can reach the model and the log.
 - **Agent visibility.** While a run is active, the edge-glow overlay (or, without it, a toast)
   shows on the phone that the agent is in control, with a ripple where it is about to touch.
   The overlay hooks nothing, never takes touches and draws no text.
+- **Screen capture.** The overlay can save screen frames (`rootpilot capture`), used for docs and
+  debugging. It captures only when RootPilot has written a request file into its private 0700
+  folder (`/var/mobile/Library/RootPilot`); posting the Darwin notification alone does nothing,
+  so another app can't trigger it. Frames contain whatever was on screen — treat them like
+  screenshots, and delete `captures/` when done. The agent itself doesn't use captures yet.
 - **The ZXTouch app** ships signed for a foreign developer team, so it won't launch. Re-signing
   it ad-hoc (`packaging/zxtouch-app.entitlements`) makes it open; RootPilot itself doesn't need
   the app, only the tweak.

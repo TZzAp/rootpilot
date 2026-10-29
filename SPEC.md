@@ -274,8 +274,11 @@ backoff on 429/5xx, and `Retry-After` support.
   is a 404 and a non-loopback `Host` header a 421. API: `GET status|info|runs`,
   `POST run|stop|confirm`. One run at a time. Confirm and `ask_user` prompts are shown on the
   page and block the run until answered (timeout 180 s = deny); Stop also releases a waiting
-  prompt. `/api/info` never includes secrets. Off by default; `packaging/com.rootpilot.serve.plist`
-  runs it under launchd as `mobile`.
+  prompt. `/api/info` never includes secrets. Off by default; `rootpilot daemon-plist` generates
+  a launchd plist (rootful or rootless paths) that runs it as `mobile`.
+- `rootpilot capture`: the overlay saves screen frames, only when a request file exists in the
+  private overlay folder (a notification alone does nothing). For docs and debugging; not yet
+  used as an agent observation.
 - `rootpilot install-icon`: a full-screen web clip (`/var/mobile/Library/WebClips/<hex>.webclip`)
   with the RootPilot icon, opening the control page. `--remove` deletes it.
 - Indicator (`agent/indicator.py`): on run start/step/end the loop writes `$STATE_DIR/hud.json`

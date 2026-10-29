@@ -1,8 +1,14 @@
 # Setting up RootPilot on a device
 
-This guide targets the reference device: **iPhone X, iOS 16.7.11, palera1n rootful** (Procursus
-bootstrap, ElleKit). Rootless jailbreaks (Dopamine, palera1n rootless) work the same way; the
-only difference is that packages live under `/var/jb`, which RootPilot detects on its own.
+Tested on two devices:
+
+| Device | iOS | Jailbreak |
+|---|---|---|
+| iPhone X | 16.7.11 | palera1n **rootful** (Procursus, ElleKit) |
+| iPhone 7 Plus | 15.8.3 | Dopamine 2 **rootless** (Procursus, ElleKit) |
+
+The steps are the same for both; where they differ, the rootless variant is noted. On rootless
+jailbreaks everything lives under `/var/jb`, which RootPilot detects on its own.
 
 > Read [`SECURITY.md`](SECURITY.md) first. ZXTouch, the touch backend used until the M2 helper
 > exists, accepts unauthenticated commands — including root shell commands — from anyone who can
@@ -36,6 +42,10 @@ python3 --version        # expect 3.9.x
 `uikittools` provides `uiopen` (used to open URLs); `network-cmds` provides `netstat` (used by
 `rootpilot doctor` to check that ZXTouch is not exposed); `ldid` re-signs the patched ZXTouch.
 
+**Rootless (Dopamine):** check that a tweak loader is installed — `ls /var/jb/usr/lib/TweakInject.dylib`.
+If not, `sudo apt install ellekit`. (On the test iPhone 7 Plus the ElleKit repo's signing key was
+missing, so apt needed `-o APT::Get::AllowUnauthenticated=true` for that one package.)
+
 ## 3. Install ZXTouch — bound to loopback
 
 Upstream ZXTouch listens on **all interfaces** (`#define ADDR "0.0.0.0"` in
@@ -67,6 +77,19 @@ restart SpringBoard:
 sudo apt install ldid
 sudo dpkg -i /tmp/com.zjx.ioscontrol_0.0.7-10+loopback_iphoneos-arm.deb
 sudo ldid -S /Library/MobileSubstrate/DynamicLibraries/pccontrol.dylib
+sudo sbreload
+```
+
+**Rootless (Dopamine):** build a tweak-only rootless package instead. It installs under
+`/var/jb`, and the tweak's substrate links are rewritten to `@rpath/libsubstrate.dylib` with an
+rpath of `/var/jb/usr/lib` (verified on the iPhone 7 Plus, iOS 15.8.3):
+
+```sh
+python3 scripts/zxtouch_loopback.py --rootless com.zjx.ioscontrol_0.0.7-10_iphoneos-arm.deb
+scp com.zjx.ioscontrol_0.0.7-10+loopback+rootless_iphoneos-arm64.deb mobile@<device-ip>:/tmp/
+# on the device:
+sudo dpkg -i /tmp/com.zjx.ioscontrol_0.0.7-10+loopback+rootless_iphoneos-arm64.deb
+sudo ldid -S /var/jb/Library/MobileSubstrate/DynamicLibraries/pccontrol.dylib
 sudo sbreload
 ```
 
@@ -193,16 +216,24 @@ The control page lets you run RootPilot from the phone itself: type a task, watc
 answer Allow/Deny prompts, stop a run, and see recent runs. It is served on `127.0.0.1` only,
 behind a secret token.
 
-Keep the server running with launchd (it starts at boot and restarts if it stops):
+Keep the server running with launchd (it starts at boot and restarts if it stops).
+`rootpilot daemon-plist` writes a plist with the right paths for this device — rootful
+(`/Library/LaunchDaemons`) or rootless (`/var/jb/Library/LaunchDaemons`):
 
 ```sh
-scp packaging/com.rootpilot.serve.plist mobile@<device-ip>:/tmp/
-# on the device:
-P=/Library/LaunchDaemons/com.rootpilot.serve.plist
-sudo cp /tmp/com.rootpilot.serve.plist $P && sudo chown root:wheel $P && sudo chmod 644 $P
+rootpilot daemon-plist > /tmp/rp-serve.plist        # prints the install path on stderr
+P=$(rootpilot daemon-plist 2>&1 >/dev/null | sed 's/^# install to //')
+sudo cp /tmp/rp-serve.plist $P && sudo chown root:wheel $P && sudo chmod 644 $P
 sudo launchctl load $P
 rootpilot install-icon        # adds the RootPilot icon to the home screen
 ```
+
+Run these from the same shell you use for `rootpilot setup`: the daemon uses that shell's home
+directory, so it finds the same config and the same secret token as the icon. (On Dopamine the
+shell home is `/var/jb/var/mobile`, not `/var/mobile`.)
+
+After updating RootPilot, restart the daemon (`sudo launchctl unload $P && sudo launchctl load $P`);
+an open control page reloads itself.
 
 The icon lands on the last free slot of a home-screen page; drag it wherever you like. Tapping
 it opens the control page full-screen. `rootpilot install-icon --remove` takes it away.
@@ -212,6 +243,21 @@ it opens the control page full-screen. `rootpilot install-icon --remove` takes i
 A SpringBoard overlay draws a glowing edge around the screen while a run is active, and a
 ripple where the agent is about to touch. Build and install it as described in
 [`hud/README.md`](../hud/README.md). `rootpilot doctor` shows whether it is loaded.
+
+## 10. Screenshots and recordings (optional)
+
+With the overlay installed, `rootpilot capture` saves screen frames as JPEGs (the README media
+was made this way). Frames include whatever is on screen, so keep personal data out of shot:
+
+```sh
+rootpilot capture --frames 1 --name shot                       # one screenshot
+rootpilot capture --frames 200 --interval 0.25 --name run &    # ~50 s at 4 fps, in the background
+rootpilot run "open the Calculator app and calculate 128 times 7"
+# on your computer: copy the frames over, then
+python scripts/frames_to_gif.py frames/ demo.gif --width 300 --speed 3
+```
+
+Frames go to `/var/mobile/Library/RootPilot/captures/<name>/` (private to `mobile`).
 
 ## Trying it without a device
 

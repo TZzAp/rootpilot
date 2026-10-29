@@ -10,10 +10,10 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e '.[dev]'
@@ -22,15 +22,18 @@ jobs:
       - run: mypy --strict
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         # 3.9 is what Procursus ships for iOS 16 rootful; 3.12 catches newer-Python breakage.
         python-version: ["3.9", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
       - run: pytest -m "not device"
+      - name: Check the control page script parses
+        if: matrix.python-version == '3.12'
+        run: node -e "new Function(require('fs').readFileSync('agent/webui/control.html','utf8').split('<script>')[1].split('</script>')[0])"

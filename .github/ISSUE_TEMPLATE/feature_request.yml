@@ -1,0 +1,14 @@
+name: Feature request
+description: An idea for RootPilot
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like RootPilot to do?
+    validations: { required: true }
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety
+      description: Could this let the agent do something irreversible, read secrets, or be triggered by screen content? How should it be gated?

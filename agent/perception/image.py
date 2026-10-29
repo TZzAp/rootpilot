@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import struct
+from typing import Any
 
 from agent.perception import png
 from agent.types import Image
@@ -38,7 +39,10 @@ def _resize_with_pillow(data: bytes, width: int, height: int) -> bytes | None:
         from PIL import Image as PILImage  # type: ignore[import-not-found, unused-ignore]
     except ImportError:
         return None
+    # Image.Resampling arrived in Pillow 9.1; older versions only have the module constants.
+    resampling: Any = getattr(PILImage, "Resampling", PILImage)
+    lanczos = resampling.LANCZOS
     with PILImage.open(io.BytesIO(data)) as im:
         out = io.BytesIO()
-        im.convert("RGB").resize((width, height), PILImage.LANCZOS).save(out, format="PNG")
+        im.convert("RGB").resize((width, height), lanczos).save(out, format="PNG")
         return out.getvalue()

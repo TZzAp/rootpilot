@@ -1,0 +1,33 @@
+name: Bug report
+description: Something RootPilot did wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: { required: true }
+  - type: textarea
+    id: task
+    attributes:
+      label: Task and steps
+      description: The task you gave and the relevant lines from the run (control page log or `rootpilot run` output).
+  - type: input
+    id: device
+    attributes:
+      label: Device, iOS version and jailbreak
+      placeholder: "iPhone X, iOS 16.7.11, palera1n rootful"
+    validations: { required: true }
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and model
+      placeholder: "deepseek / deepseek-flash"
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`rootpilot doctor` output"
+      render: text
+  - type: markdown
+    attributes:
+      value: "Please remove API keys, tokens and personal screen content before posting. Audit logs contain the screen text of each step."
