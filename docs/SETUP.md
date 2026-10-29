@@ -97,6 +97,19 @@ And from your computer, `nc -vz <device-ip> 6000` must fail with "connection ref
 > If you install the unpatched package, it **will** listen on all interfaces: only enable it on
 > a network you trust, and uninstall it when you're not using it.
 
+### 3d. If the ZXTouch app icon doesn't open
+
+RootPilot only needs the ZXTouch *tweak*. The ZXTouch *app* ships signed for a foreign
+developer team, so iOS won't launch it. To use the app anyway, re-sign it ad-hoc:
+
+```sh
+scp packaging/zxtouch-app.entitlements mobile@<device-ip>:/tmp/
+# on the device:
+sudo cp -p /Applications/zxtouch.app/zxtouch /Applications/zxtouch.app/zxtouch.orig
+sudo ldid -S/tmp/zxtouch-app.entitlements /Applications/zxtouch.app/zxtouch
+sudo uicache -p /Applications/zxtouch.app
+```
+
 ## 4. Install RootPilot
 
 There is no `.deb` yet (that's M5). Copy the source to the device:
@@ -173,6 +186,32 @@ Stop a run at any time with **Ctrl-C**, or from another SSH session:
 ```sh
 touch ~/.local/state/rootpilot/STOP     # remove it again before the next run
 ```
+
+## 8. Home-screen icon and control page
+
+The control page lets you run RootPilot from the phone itself: type a task, watch each step,
+answer Allow/Deny prompts, stop a run, and see recent runs. It is served on `127.0.0.1` only,
+behind a secret token.
+
+Keep the server running with launchd (it starts at boot and restarts if it stops):
+
+```sh
+scp packaging/com.rootpilot.serve.plist mobile@<device-ip>:/tmp/
+# on the device:
+P=/Library/LaunchDaemons/com.rootpilot.serve.plist
+sudo cp /tmp/com.rootpilot.serve.plist $P && sudo chown root:wheel $P && sudo chmod 644 $P
+sudo launchctl load $P
+rootpilot install-icon        # adds the RootPilot icon to the home screen
+```
+
+The icon lands on the last free slot of a home-screen page; drag it wherever you like. Tapping
+it opens the control page full-screen. `rootpilot install-icon --remove` takes it away.
+
+## 9. Edge glow while the agent is in control (optional)
+
+A SpringBoard overlay draws a glowing edge around the screen while a run is active, and a
+ripple where the agent is about to touch. Build and install it as described in
+[`hud/README.md`](../hud/README.md). `rootpilot doctor` shows whether it is loaded.
 
 ## Trying it without a device
 

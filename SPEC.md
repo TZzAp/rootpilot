@@ -65,8 +65,10 @@ All on-device paths (helper socket, Procursus binaries) are built from `jbroot()
 - **Helper** (`helper/`, M2): Theos daemon `rootpilotd` exposing JSON-RPC over a Unix socket with
   mode `0600`, owned by the user running the core. Provides screenshot, HID touch/keys, app launch,
   URL open, clipboard, hardware buttons, accessibility tree (M3) and the kill-switch chord.
-- **No network listeners.** RootPilot opens no TCP/UDP listening sockets. The MCP server (M4) uses
-  stdio only. The ZXTouch backend connects only to loopback.
+- **No network listeners.** RootPilot opens no listening sockets reachable from the network. The
+  one exception is the optional control page (§3.10), which binds to loopback only and is
+  token-gated. The MCP server (M4) uses stdio only. The ZXTouch backend connects only to
+  loopback.
 
 ### 3.1 Tools
 
@@ -263,6 +265,24 @@ backoff on 429/5xx, and `Retry-After` support.
 ### 3.9 Configuration
 `~/.config/rootpilot/config.json` (or `$XDG_CONFIG_HOME`), JSON with a documented schema in
 `docs/CONFIG.md`. Environment variables override the file; CLI flags override both.
+
+### 3.10 Control page, home-screen icon and agent-active indicator
+
+- `rootpilot serve` (`agent/serve.py`): an HTTP control page bound to `127.0.0.1` only (any
+  other bind is refused), port `serve_port` (default 8366). Every route lives under a secret
+  `/<token>/` prefix (token in `$STATE_DIR/serve_token`, created with mode 0600); a wrong token
+  is a 404 and a non-loopback `Host` header a 421. API: `GET status|info|runs`,
+  `POST run|stop|confirm`. One run at a time. Confirm and `ask_user` prompts are shown on the
+  page and block the run until answered (timeout 180 s = deny); Stop also releases a waiting
+  prompt. `/api/info` never includes secrets. Off by default; `packaging/com.rootpilot.serve.plist`
+  runs it under launchd as `mobile`.
+- `rootpilot install-icon`: a full-screen web clip (`/var/mobile/Library/WebClips/<hex>.webclip`)
+  with the RootPilot icon, opening the control page. `--remove` deletes it.
+- Indicator (`agent/indicator.py`): on run start/step/end the loop writes `$STATE_DIR/hud.json`
+  (active, task, step, touch point) and posts `com.rootpilot.hud.active|update|idle`. The
+  SpringBoard overlay `hud/RootPilotHUD` draws an edge glow and touch ripples from them. It
+  hooks nothing, ignores all touches and draws no text (text would leak into OCR observations).
+  Without the overlay, a ZXTouch toast announces start and end instead.
 
 ## 4. Repository layout
 

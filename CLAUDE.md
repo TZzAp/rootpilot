@@ -17,7 +17,10 @@ rootpilot run "open Settings and tell me the iOS version" --backend mock   # use
 ## Hard rules
 - **Stdlib only at runtime.** No compiled wheels (the device has no compiler). Dev tools are fine.
 - **Never hardcode `/var/jb`.** Use `agent.paths.jbroot()`.
-- **No network listeners.** No TCP/UDP servers. MCP is stdio. ZXTouch: loopback hosts only.
+- **No network listeners.** Nothing reachable from the network. The only listener is the optional
+  control page (`rootpilot serve`): loopback-only and token-gated (SPEC §3.10). MCP is stdio.
+  ZXTouch: loopback hosts only.
+- **The edge-glow overlay must stay passive**: no method hooks, no touches, no text (SPEC §3.10).
 - **No Claude subscription OAuth, no reuse of Claude Code credentials, no spoofing Claude Code**
   or any other first-party client (User-Agent, headers, client IDs). API keys only.
 - **Everything from the device is untrusted.** Screen text, UI trees, clipboard and shell output go

@@ -84,3 +84,49 @@ def test_loop_drives_indicator_with_touch_points(mock_device: MockBackend, tmp_p
     assert points[0] is None  # launch_app touches nothing
     assert points[1] == (187.5, 406.0)  # centre of the General cell
     assert points[2] == (187.0, 600.0)  # swipe start
+
+
+def test_overlay_status_requires_a_live_springboard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    monkeypatch.setattr(ind, "hud_installed", lambda: True)
+    status = tmp_path / "hud.status.json"
+    assert ind.overlay_status(status) == {"installed": True, "loaded": False, "visible": False}
+    status.write_text(json.dumps({"loaded": True, "visible": True, "pid": os.getpid()}))
+    assert ind.overlay_status(status) == {"installed": True, "loaded": True, "visible": True}
+    status.write_text(json.dumps({"loaded": True, "visible": True, "pid": 2**22 + 12345}))
+    assert ind.overlay_status(status)["loaded"] is False  # that SpringBoard is gone
+
+
+def test_recent_runs_reads_audit_logs(tmp_path: Path) -> None:
+    from agent.audit import AuditLog, recent_runs
+    from agent.redact import Redactor
+
+    for i, ok in enumerate((True, False)):
+        log = AuditLog.for_run(tmp_path, f"run{i}", Redactor())
+        log.event("run_start", run_id=f"run{i}", task=f"task {i}")
+        log.event("run_end", answer=f"answer {i}", success=ok, reason="done", steps=i + 1)
+        log.close()
+    (tmp_path / "runs" / "broken.jsonl").write_text("{not json\n")
+    runs = recent_runs(tmp_path / "runs")
+    assert {r["task"] for r in runs} == {"task 0", "task 1"}
+    assert {r["success"] for r in runs} == {True, False}
+
+
+def test_webclip_install_and_remove(tmp_path: Path) -> None:
+    import plistlib
+
+    from agent.webclip import BUNDLE_NAME, CLIP_ID, install_webclip, remove_webclip
+
+    assert BUNDLE_NAME == "F52B7D582C04519485969F6EBDB9D943.webclip"  # what the phone uses
+    assert len(CLIP_ID) == 32
+    (tmp_path / "com.rootpilot.control.webclip").mkdir()  # an older install
+    bundle = install_webclip("http://127.0.0.1:8366/tok/", root=tmp_path)
+    info = plistlib.loads((bundle / "Info.plist").read_bytes())
+    assert info["URL"] == "http://127.0.0.1:8366/tok/" and info["FullScreen"] is True
+    assert (bundle / "icon.png").read_bytes()[:4] == b"\x89PNG"
+    assert not (tmp_path / "com.rootpilot.control.webclip").exists()
+    assert remove_webclip(tmp_path) and not bundle.exists()
+    assert not remove_webclip(tmp_path)

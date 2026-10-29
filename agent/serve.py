@@ -22,10 +22,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from agent.audit import recent_runs
 from agent.config import Config
 from agent.errors import ConfigError
 from agent.loop import ALWAYS, NO, YES, Agent, RunResult
-from agent.paths import ensure_private_dir, serve_token_file, state_dir, stop_file
+from agent.paths import (
+    ensure_private_dir,
+    hud_status_file,
+    serve_token_file,
+    state_dir,
+    stop_file,
+)
 from agent.permissions import Decision, Rule
 from agent.tools.registry import Category
 
@@ -196,6 +203,37 @@ class ControlServer:
     def base(self) -> str:
         return f"/{self.token}"
 
+    def info(self) -> dict[str, Any]:
+        """What the page's status strip shows. Never includes keys or other secrets."""
+        from agent import __version__
+        from agent.config import load_config
+        from agent.indicator import overlay_status
+
+        try:
+            cfg = load_config()
+            model = cfg.model or {"anthropic": "claude-opus-5-5", "deepseek": "deepseek-flash"}.get(
+                cfg.provider, ""
+            )
+            provider, backend, error = cfg.provider, cfg.backend, ""
+        except ConfigError as exc:
+            provider = model = backend = ""
+            error = str(exc)
+        zxtouch: Optional[bool] = None
+        if backend == "zxtouch":
+            from agent.backends.zxtouch import is_exposed, listening_addresses
+
+            addrs = listening_addresses(self.cfg.zxtouch_port)
+            zxtouch = None if addrs is None else (bool(addrs) and not is_exposed(addrs))
+        return {
+            "version": __version__,
+            "provider": provider,
+            "model": model,
+            "backend": backend,
+            "config_error": error,
+            "overlay": overlay_status(hud_status_file()),
+            "zxtouch_loopback_only": zxtouch,
+        }
+
 
 def _load_token() -> str:
     path = serve_token_file()
@@ -252,6 +290,10 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
                 self._send(200, html.encode(), "text/html; charset=utf-8")
             elif route == "/api/status":
                 self._json(200, server.state.snapshot())
+            elif route == "/api/info":
+                self._json(200, server.info())
+            elif route == "/api/runs":
+                self._json(200, recent_runs(state_dir() / "runs"))
             else:
                 self._send(404, b"not found", "text/plain")
 

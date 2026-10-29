@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Ad-hoc entitlements for the ZXTouch app (/Applications/zxtouch.app/zxtouch). The shipped
+     binary is signed for a foreign Apple developer team, so iOS refuses to launch it on a
+     palera1n device. Re-sign: sudo ldid -S<this file> /Applications/zxtouch.app/zxtouch -->
+<plist version="1.0"><dict>
+  <key>platform-application</key><true/>
+  <key>com.apple.private.security.no-container</key><true/>
+  <key>com.apple.private.skip-library-validation</key><true/>
+  <key>get-task-allow</key><true/>
+</dict></plist>

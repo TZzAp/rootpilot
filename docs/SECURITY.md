@@ -63,9 +63,15 @@ in a secure field) can reach the model and the log.
 
 ### 3. Local socket exposure
 
-- **RootPilot opens no listening sockets.** It talks to ZXTouch as a client, and only to
-  loopback (`127.0.0.1`, `::1`); any other host is refused when the backend is created. The MCP
-  server planned for M4 will use stdio only.
+- **Nothing RootPilot opens is reachable from the network.** It talks to ZXTouch as a client,
+  and only to loopback (`127.0.0.1`, `::1`); any other host is refused when the backend is
+  created. The MCP server planned for M4 will use stdio only.
+- **The control page** (`rootpilot serve`) is the one listener. It binds to `127.0.0.1` only
+  (other addresses are refused), every route needs a secret path token (mode 0600 file), and a
+  non-loopback `Host` header is rejected to stop DNS-rebinding from a web page. What remains is
+  another app *on the phone* that learns the token: it could start tasks and answer prompts.
+  Treat the token like a password; delete `~/.local/state/rootpilot/serve_token` to rotate it
+  (then re-run `rootpilot install-icon`). Prompts left unanswered for 180 s are denied.
 - **ZXTouch itself is the problem.** Upstream listens on `0.0.0.0:6000` with no authentication,
   and its protocol includes a command that runs shell commands **as root**. Anyone on the same
   network can take over the phone. [`SETUP.md`](SETUP.md) shows how to rebuild it bound to
@@ -74,6 +80,13 @@ in a secure field) can reach the model and the log.
   helper, whose Unix socket is mode `0600` and owned by the RootPilot user.
 - RootPilot never sends ZXTouch's root-shell command, and rejects ZXTouch protocol separators
   (`;;`, newlines) inside arguments so a crafted string can't smuggle in a second command.
+
+- **Agent visibility.** While a run is active, the edge-glow overlay (or, without it, a toast)
+  shows on the phone that the agent is in control, with a ripple where it is about to touch.
+  The overlay hooks nothing, never takes touches and draws no text.
+- **The ZXTouch app** ships signed for a foreign developer team, so it won't launch. Re-signing
+  it ad-hoc (`packaging/zxtouch-app.entitlements`) makes it open; RootPilot itself doesn't need
+  the app, only the tweak.
 
 ### 4. The `shell` tool
 

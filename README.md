@@ -19,6 +19,9 @@ before doing anything sensitive or irreversible.
 - Permission engine: allow / ask / deny tiers, sensitive-app list, confirmation for irreversible
   taps ("Send", "Pay", "Delete"…), shell deny-list, refusal to type into password fields
 - JSONL audit log of every run, with secrets redacted
+- On the phone: a **RootPilot home-screen icon** that opens a control page (start tasks, watch
+  each step, Allow/Deny prompts, Stop, run history), and an optional **edge glow** around the
+  screen while the agent is in control, with a ripple where it touches
 - Pure-Python, stdlib-only runtime (Python >= 3.9) — nothing to compile on the device
 
 ## Quick start (no device needed)
@@ -45,8 +48,9 @@ On a device, follow [`docs/SETUP.md`](docs/SETUP.md).
 - **No Claude subscription OAuth.** RootPilot does not log in with a Claude.ai / Claude Pro / Max
   subscription, does not reuse Claude Code credentials and never identifies itself as Claude Code.
   Use an Anthropic API key, or use RootPilot from Claude Code as an MCP server (planned, M4).
-- **No network listeners.** RootPilot opens no listening sockets. Keep ZXTouch bound to
-  `127.0.0.1` (see setup docs) — otherwise anyone on your Wi-Fi could control your phone.
+- **Nothing listens on the network.** The optional control page binds to `127.0.0.1` only and
+  needs a secret token. Keep ZXTouch bound to `127.0.0.1` too (see setup docs) — otherwise anyone
+  on your Wi-Fi could control your phone.
 
 ## License
 [Apache-2.0](LICENSE)

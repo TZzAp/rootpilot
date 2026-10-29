@@ -63,6 +63,17 @@
   .quick { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
   .quick button { flex:none; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
     font-weight:500; font-size:13px; padding:8px 12px; }
+  .strip { display:flex; flex-wrap:wrap; gap:6px; margin:-6px 0 14px; }
+  .chip { font-size:12px; padding:4px 9px; border-radius:999px; background:var(--panel2);
+    border:1px solid var(--line); color:var(--dim); }
+  .chip.good { color:var(--ok); border-color:rgba(57,217,138,.35); }
+  .chip.bad { color:var(--bad); border-color:rgba(255,92,92,.45); }
+  .runs { list-style:none; margin:0; padding:0; }
+  .runs li { padding:10px 2px; border-top:1px solid var(--line); cursor:pointer; }
+  .runs li:first-child { border-top:none; }
+  .runs .t { font-weight:600; font-size:14px; }
+  .runs .a { color:var(--dim); font-size:13px; margin-top:2px; }
+  h2 { font-size:14px; margin:0 0 6px; color:var(--dim); font-weight:600; letter-spacing:.3px; }
   .hide { display:none !important; }
 </style>
 </head>
@@ -72,6 +83,8 @@
   <h1>RootPilot</h1>
   <span class="state" id="state">idle</span>
 </header>
+
+<div class="strip" id="strip"></div>
 
 <div class="card" id="composer">
   <textarea id="task" placeholder="Tell RootPilot what to do on this iPhone…
@@ -101,6 +114,11 @@ e.g. open Settings and tell me the iOS version"></textarea>
     <button class="ghost" id="clear">Clear log</button>
   </div>
   <div class="log" id="log"><span class="muted">No run yet. Enter a task and press Start.</span></div>
+</div>
+
+<div class="card" id="historyCard">
+  <h2>RECENT RUNS</h2>
+  <ul class="runs" id="runs"><li class="muted">none yet</li></ul>
 </div>
 
 <script>
@@ -139,7 +157,7 @@ function renderLog(lines){
 }
 
 let lastPending = null;
-async function tick(){
+async function refresh(){
   let s; try { s = await api("api/status"); } catch(e){ $("#state").textContent="offline"; return; }
   const running = s.running;
   $("#dot").classList.toggle("on", running);
@@ -195,8 +213,47 @@ $("#start").onclick = async () => {
 $("#stop").onclick = () => api("api/stop", {}).then(tick);
 $("#clear").onclick = () => { $("#log").innerHTML = '<span class="muted">cleared</span>'; };
 
-tick();
+const esc = s => String(s ?? "").replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
+
+async function loadInfo(){
+  let i; try { i = await api("api/info"); } catch(e){ return; }
+  const chips = [];
+  if (i.config_error) chips.push(`<span class="chip bad">config: ${esc(i.config_error)}</span>`);
+  else chips.push(`<span class="chip">${esc(i.provider)} · ${esc(i.model)}</span>`, `<span class="chip">${esc(i.backend)}</span>`);
+  const o = i.overlay || {};
+  chips.push(o.loaded ? `<span class="chip good">edge glow on</span>`
+    : o.installed ? `<span class="chip bad">edge glow not loaded</span>` : `<span class="chip">no edge glow</span>`);
+  if (i.zxtouch_loopback_only === true) chips.push(`<span class="chip good">ZXTouch loopback-only</span>`);
+  if (i.zxtouch_loopback_only === false) chips.push(`<span class="chip bad">ZXTouch exposed!</span>`);
+  chips.push(`<span class="chip">v${esc(i.version)}</span>`);
+  $("#strip").innerHTML = chips.join("");
+}
+
+async function loadRuns(){
+  let runs; try { runs = await api("api/runs"); } catch(e){ return; }
+  if (!runs.length) return;
+  $("#runs").innerHTML = runs.map(r => {
+    const mark = r.success === true ? "✅" : r.success === false ? "⚠️" : "…";
+    const when = r.ts ? new Date(r.ts*1000).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : "";
+    return `<li data-task="${esc(r.task)}"><div class="t">${mark} ${esc(r.task)}</div>
+      <div class="a">${esc(when)} · ${esc(r.reason)}${r.steps!=null?` · ${r.steps} steps`:""}${r.answer?` — ${esc(r.answer)}`:""}</div></li>`;
+  }).join("");
+  document.querySelectorAll("#runs li").forEach(li => li.onclick = () => {
+    $("#task").value = li.dataset.task; window.scrollTo({top:0, behavior:"smooth"}); $("#task").focus();
+  });
+}
+
+let wasRunning = false;
+async function tick(){
+  await refresh();
+  const running = !$("#stop").classList.contains("hide");
+  if (wasRunning && !running) loadRuns();
+  wasRunning = running;
+};
+
+loadInfo(); loadRuns(); tick();
 setInterval(tick, 1000);
+setInterval(loadInfo, 10000);
 </script>
 </body>
 </html>

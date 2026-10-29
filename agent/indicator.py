@@ -118,6 +118,21 @@ def hud_installed() -> bool:
     return (jbroot() / HUD_DYLIB).exists()
 
 
+def overlay_status(status_file: Path) -> dict[str, Any]:
+    """Installed / loaded (by a live SpringBoard) / visible, from the overlay's self-report."""
+    out: dict[str, Any] = {"installed": hud_installed(), "loaded": False, "visible": False}
+    try:
+        status = json.loads(status_file.read_text(encoding="utf-8"))
+        pid = int(status.get("pid", 0))
+        if pid > 0:
+            os.kill(pid, 0)  # raises if that SpringBoard is gone
+            out["loaded"] = bool(status.get("loaded"))
+            out["visible"] = bool(status.get("visible"))
+    except (OSError, ValueError, TypeError):
+        pass
+    return out
+
+
 def make_indicator(backend: Any, hud_file: Path, redact: Callable[[str], str]) -> Indicator:
     # With the edge-glow overlay installed, skip the toast: it's text, and the agent reads the
     # screen with OCR, so a banner would leak into its first observation.

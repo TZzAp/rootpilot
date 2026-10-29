@@ -50,6 +50,11 @@ def hud_file(env: Optional[Mapping[str, str]] = None) -> Path:
     return state_dir(env) / "hud.json"
 
 
+def hud_status_file(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Written by the overlay itself (hud/RootPilotHUD.m) when it loads, shows and hides."""
+    return state_dir(env) / "hud.status.json"
+
+
 def serve_token_file(env: Optional[Mapping[str, str]] = None) -> Path:
     return state_dir(env) / "serve_token"
 

@@ -10,15 +10,18 @@ from typing import Any
 
 import pytest
 
+from agent.audit import AuditLog
 from agent.backends.mock import DEMO_SCREENS, MockBackend
 from agent.config import Config
 from agent.errors import ConfigError
 from agent.loop import Agent
-from agent.paths import stop_file
+from agent.paths import state_dir, stop_file
+from agent.redact import Redactor
 from agent.serve import ControlServer, ControlState, server_ask, server_confirm
 from tests.test_loop import _call, make_agent, tap_label
 
 TOKEN = "test-token-123"
+SECRET_KEY = "sk-ant-api03-" + "S" * 40
 
 
 class Live:
@@ -52,6 +55,9 @@ class Live:
 
 def start(tmp_path: Path, steps: list[Any], monkeypatch: pytest.MonkeyPatch) -> Iterator[Live]:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("ROOTPILOT_BACKEND", "mock")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", SECRET_KEY)
 
     def build(state: ControlState, task: str) -> Agent:
         agent, _, _ = make_agent(MockBackend.from_dir(DEMO_SCREENS), steps, tmp_path)
@@ -59,6 +65,9 @@ def start(tmp_path: Path, steps: list[Any], monkeypatch: pytest.MonkeyPatch) -> 
         agent.ask_user = server_ask(state)
         agent.report = state.report
         agent.stop_file = stop_file()  # the file the server's Stop button writes
+        agent.audit = AuditLog.for_run(
+            state_dir(), agent.run_id, Redactor()
+        )  # where /api/runs looks
         return agent
 
     server = ControlServer(Config(serve_port=0), build_agent=build, token=TOKEN)
@@ -132,3 +141,18 @@ def test_stop_releases_a_waiting_prompt(tmp_path: Path, monkeypatch: pytest.Monk
         status = live.wait(lambda s: s["result"] is not None)
         assert status["result"]["reason"] == "stopped"
         assert any(line.startswith("⛔") for line in status["lines"])  # prompt was declined
+
+
+def test_info_and_history(flow: Live) -> None:
+    code, info = flow.req("GET", f"/{TOKEN}/api/info")
+    assert code == 200
+    assert info["provider"] == "anthropic" and info["backend"] == "mock"
+    assert info["model"] == "claude-opus-5-5" and info["overlay"]["installed"] is False
+    assert SECRET_KEY not in json.dumps(info)  # the page never sees keys
+    assert flow.req("GET", f"/{TOKEN}/api/runs") == (200, [])
+    flow.req("POST", f"/{TOKEN}/api/run", {"task": "iOS version?"})
+    flow.wait(lambda s: s["result"] is not None)
+    code, runs = flow.req("GET", f"/{TOKEN}/api/runs")
+    assert code == 200 and len(runs) == 1
+    assert runs[0]["task"] == "iOS version?" and runs[0]["success"] is True
+    assert runs[0]["answer"] == "iOS 16.7.11" and runs[0]["steps"] == 4

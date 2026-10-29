@@ -10,15 +10,20 @@ from __future__ import annotations
 import plistlib
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Optional
 
 WEBCLIPS = Path("/var/mobile/Library/WebClips")
-BUNDLE_NAME = "com.rootpilot.control.webclip"
+# iOS names web clips with a 32-character hex identifier; derive a stable one.
+CLIP_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "control.rootpilot").hex.upper()
+BUNDLE_NAME = f"{CLIP_ID}.webclip"
+LEGACY_NAMES = ("com.rootpilot.control.webclip",)
 ICON = Path(__file__).resolve().parent / "webui" / "icon.png"
 
 
 def install_webclip(url: str, root: Path = WEBCLIPS, title: str = "RootPilot") -> Path:
+    _remove_legacy(root)
     bundle = root / BUNDLE_NAME
     bundle.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ICON, bundle / "icon.png")
@@ -39,12 +44,22 @@ def install_webclip(url: str, root: Path = WEBCLIPS, title: str = "RootPilot") -
     return bundle
 
 
+def _remove_legacy(root: Path) -> bool:
+    removed = False
+    for name in LEGACY_NAMES:
+        if (root / name).exists():
+            shutil.rmtree(root / name)
+            removed = True
+    return removed
+
+
 def remove_webclip(root: Path = WEBCLIPS) -> bool:
+    removed = _remove_legacy(root)
     bundle = root / BUNDLE_NAME
-    if not bundle.exists():
-        return False
-    shutil.rmtree(bundle)
-    return True
+    if bundle.exists():
+        shutil.rmtree(bundle)
+        removed = True
+    return removed
 
 
 def refresh_icons() -> Optional[str]:

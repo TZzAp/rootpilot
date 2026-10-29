@@ -16,7 +16,15 @@ from agent.config import Config, default_config_path, load_config
 from agent.errors import RootPilotError
 from agent.indicator import make_indicator
 from agent.loop import ALWAYS, NO, YES, Agent, RunResult
-from agent.paths import ensure_private_dir, hud_file, jbroot, state_dir, stop_file
+from agent.paths import (
+    ensure_private_dir,
+    hud_file,
+    hud_status_file,
+    jbroot,
+    serve_token_file,
+    state_dir,
+    stop_file,
+)
 from agent.permissions import Decision, PermissionEngine, Rule
 from agent.providers import PROVIDERS, make_provider
 from agent.redact import MASK, Redactor
@@ -122,12 +130,42 @@ def doctor(args: argparse.Namespace, out: TextIO) -> int:
         add("state dir", OK, str(sd))
     except OSError as exc:
         add("state dir", FAIL, f"{sd}: {exc}")
+
+    # Optional extras: the home-screen control page and the edge-glow overlay.
+    add("control page", *_control_page_check(cfg))
+    from agent.indicator import overlay_status
+
+    overlay = overlay_status(hud_status_file())
+    if not overlay["installed"]:
+        add("edge glow", OK, "not installed (optional; see hud/README.md)")
+    elif overlay["loaded"]:
+        add("edge glow", OK, "installed and loaded in SpringBoard")
+    else:
+        add("edge glow", WARN, "installed but not loaded; respring (sudo sbreload)")
     add(
         "stop file",
         WARN if stop_file().exists() else OK,
         f"{stop_file()} {'EXISTS: runs stop immediately' if stop_file().exists() else 'absent'}",
     )
     return _print_checks(checks, out)
+
+
+def _control_page_check(cfg: Config) -> tuple[str, str]:
+    import urllib.error
+    import urllib.request
+
+    token_path = serve_token_file()
+    if not token_path.exists():
+        return OK, "not set up (optional; rootpilot serve + rootpilot install-icon)"
+    token = token_path.read_text("utf-8").strip()
+    url = f"http://127.0.0.1:{cfg.serve_port}/{token}/api/status"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            if resp.status == 200:
+                return OK, f"running on 127.0.0.1:{cfg.serve_port}"
+    except (urllib.error.URLError, OSError):
+        pass
+    return WARN, f"not answering on 127.0.0.1:{cfg.serve_port}; start rootpilot serve"
 
 
 def _print_checks(checks: list[tuple[str, str, str]], out: TextIO) -> int:

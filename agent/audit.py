@@ -12,6 +12,42 @@ from agent.paths import ensure_private_dir
 from agent.redact import Redactor
 
 
+def recent_runs(runs_dir: Path, limit: int = 10) -> list[dict[str, Any]]:
+    """Summaries of the newest runs (task, answer, outcome), newest first."""
+    out: list[dict[str, Any]] = []
+    files = sorted(runs_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in files[:limit]:
+        start: dict[str, Any] = {}
+        end: dict[str, Any] = {}
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    if event.get("event") == "run_start":
+                        start = event
+                    elif event.get("event") == "run_end":
+                        end = event
+        except OSError:
+            continue
+        if not start:
+            continue
+        out.append(
+            {
+                "run_id": start.get("run_id", path.stem),
+                "ts": start.get("ts"),
+                "task": start.get("task", ""),
+                "answer": end.get("answer"),
+                "success": end.get("success"),
+                "reason": end.get("reason", "running" if not end else ""),
+                "steps": end.get("steps"),
+            }
+        )
+    return out
+
+
 class AuditLog:
     def __init__(self, path: Optional[Path], redactor: Redactor) -> None:
         self.path = path
