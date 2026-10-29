@@ -25,6 +25,9 @@ rootpilot = "agent.cli:main"
 [tool.setuptools.packages.find]
 include = ["agent*"]
 
+[tool.setuptools.package-data]
+"agent.demo" = ["screens/*.json"]
+
 [tool.ruff]
 target-version = "py39"
 line-length = 100

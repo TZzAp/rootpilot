@@ -184,9 +184,14 @@ class PermissionEngine:
         return True
 
     def check(self, tool: ToolDef, args: dict[str, Any], ctx: PermissionContext) -> Decision:
-        decisions = [self._default(tool.category)]
-        decisions += self._escalations(tool, args, ctx)
-        return max(decisions, key=lambda d: d.verdict.value)
+        decisions = [self._default(tool.category), *self._escalations(tool, args, ctx)]
+        top = max(d.verdict for d in decisions)
+        winners = [d for d in decisions if d.verdict is top]
+        if len(winners) == 1:
+            return winners[0]
+        # Show every reason, and report the most specific rule (escalations beat the default).
+        rule = next((d.rule for d in winners if d.rule is not Rule.DEFAULT), Rule.DEFAULT)
+        return Decision(top, "; ".join(d.reason for d in winners), rule)
 
     def is_sensitive_app(self, bundle_id: Optional[str], ctx: PermissionContext) -> bool:
         if not bundle_id:

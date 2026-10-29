@@ -30,7 +30,7 @@ class AuditLog:
     def disabled(cls) -> AuditLog:
         return cls(None, Redactor())
 
-    def event(self, kind: str, **data: Any) -> None:
+    def event(self, kind: str, /, **data: Any) -> None:
         if self._fh is None:
             return
         record = {"ts": round(time.time(), 3), "event": kind, **self._redactor.obj(data)}

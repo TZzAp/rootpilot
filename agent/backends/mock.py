@@ -31,6 +31,8 @@ from agent.perception import png
 from agent.perception.axtree import hit_test
 from agent.types import Button, Capability, Image, Size, UINode
 
+DEMO_SCREENS = Path(__file__).resolve().parent.parent / "demo" / "screens"
+
 
 @dataclass
 class Screen:

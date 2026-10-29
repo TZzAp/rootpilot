@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from agent.backends.mock import MockBackend
+from agent.backends.mock import DEMO_SCREENS, MockBackend
 
-FIXTURES = Path(__file__).parent / "fixtures" / "screens"
+FIXTURES = DEMO_SCREENS
 
 
 @pytest.fixture
