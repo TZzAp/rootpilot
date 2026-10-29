@@ -50,6 +50,7 @@ class ZXTouchBackend:
         self._sock: Optional[socket.socket] = None
         self._buf = b""
         self._size: Optional[Size] = None
+        self._scale: Optional[float] = None
 
     # ---- transport ----
 
@@ -98,7 +99,23 @@ class ZXTouchBackend:
             caps.add(Capability.OPEN_URL)
         return frozenset(caps)
 
-    def screen_size(self) -> Size:
+    # ZXTouch works in pixels (verified on iOS 16: 1125x2436 on an iPhone X, scale 3). The rest
+    # of RootPilot works in points, so convert at this boundary.
+
+    def scale(self) -> float:
+        if self._scale is None:
+            fields = self._request(
+                proto.encode(proto.TASK_GET_DEVICE_INFO, proto.DEVICE_INFO_SCREEN_SCALE)
+            )
+            try:
+                self._scale = float(fields[0])
+            except (IndexError, ValueError) as exc:
+                raise BackendError(f"unexpected screen scale reply: {fields!r}") from exc
+            if not 1 <= self._scale <= 4:
+                raise BackendError(f"implausible screen scale {self._scale}")
+        return self._scale
+
+    def _pixel_size(self) -> Size:
         if self._size is None:
             fields = self._request(
                 proto.encode(proto.TASK_GET_DEVICE_INFO, proto.DEVICE_INFO_SCREEN_SIZE)
@@ -109,26 +126,29 @@ class ZXTouchBackend:
                 raise BackendError(f"unexpected screen size reply: {fields!r}") from exc
         return self._size
 
+    def screen_size(self) -> Size:
+        px, s = self._pixel_size(), self.scale()
+        return Size(px.width / s, px.height / s)
+
     def screenshot(self) -> Image:
         raise BackendUnsupported("ZXTouch cannot take screenshots; use observe's UI tree (OCR)")
 
     def ui_tree(self) -> Optional[UINode]:
-        size = self.screen_size()
-        fields = self._request(proto.ocr_request(0, 0, size.width, size.height))
+        px, s = self._pixel_size(), self.scale()
+        fields = self._request(proto.ocr_request(0, 0, px.width, px.height))
         children = [
-            UINode(role="Text", label=text, frame=Rect(x, y, w, h))
+            UINode(role="Text", label=text, frame=Rect(x / s, y / s, w / s, h / s))
             for text, x, y, w, h in proto.parse_ocr(fields)
         ]
         children.sort(key=lambda n: (n.frame.y, n.frame.x) if n.frame else (0.0, 0.0))
+        # Unlabelled root: OCR gives text only, no element roles or containers.
         return UINode(
-            role="Screen",
-            label="(text recognised by OCR; no element roles available)",
-            frame=Rect(0, 0, size.width, size.height),
-            children=children,
+            role="Screen", frame=Rect(0, 0, px.width / s, px.height / s), children=children
         )
 
     def _touch(self, kind: int, x: float, y: float) -> None:
-        self._send(proto.touch([proto.touch_event(kind, _FINGER, x, y)]))
+        s = self.scale()
+        self._send(proto.touch([proto.touch_event(kind, _FINGER, x * s, y * s)]))
 
     def tap(self, x: float, y: float) -> None:
         self._touch(proto.TOUCH_DOWN, x, y)
@@ -141,12 +161,22 @@ class ZXTouchBackend:
         self._touch(proto.TOUCH_UP, x, y)
 
     def swipe(self, x1: float, y1: float, x2: float, y2: float, duration_ms: int) -> None:
+        # Hold still before lifting so lists stop where the finger stops instead of gliding on;
+        # otherwise the next observation is taken mid-scroll and taps land on the wrong row.
+        self._drag(x1, y1, x2, y2, duration_ms, hold_ms=250)
+
+    def _drag(
+        self, x1: float, y1: float, x2: float, y2: float, duration_ms: int, hold_ms: int
+    ) -> None:
         steps = max(2, duration_ms // 16)
         self._touch(proto.TOUCH_DOWN, x1, y1)
         for i in range(1, steps + 1):
             t = i / steps
             time.sleep(duration_ms / 1000 / steps)
             self._touch(proto.TOUCH_MOVE, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
+        if hold_ms:
+            time.sleep(hold_ms / 1000)
+            self._touch(proto.TOUCH_MOVE, x2, y2)
         self._touch(proto.TOUCH_UP, x2, y2)
 
     def type_text(self, text: str) -> None:
@@ -164,7 +194,7 @@ class ZXTouchBackend:
         # Face ID iPhones: swipe up from the home indicator.
         size = self.screen_size()
         cx = size.width / 2
-        self.swipe(cx, size.height - 2, cx, size.height * 0.55, 250)
+        self._drag(cx, size.height - 2, cx, size.height * 0.55, 250, hold_ms=0)  # a flick
 
     def launch_app(self, bundle_id: str) -> None:
         self._request(proto.encode(proto.TASK_PROCESS_BRING_FOREGROUND, bundle_id))

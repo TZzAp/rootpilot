@@ -1,8 +1,10 @@
 """ZXTouch socket wire format.
 
 Taken from the upstream Python client (xuan32546/IOS13-SimulateTouch,
-``layout/usr/lib/python3.7/site-packages/zxtouch``). Upstream targets iOS 11–14; everything
-marked VERIFY is unconfirmed on iOS 16 and must be checked on a device in M0 (SPEC §7).
+``layout/usr/lib/python3.7/site-packages/zxtouch``). Upstream targets iOS 11–14; touch, swipe,
+app launch, screen size/scale and OCR were verified on an iPhone X running iOS 16.7.11
+(palera1n rootful, ZXTouch 0.0.7-10 rebound to loopback) on 2026-10-29. Text input is
+untested on iOS 16.
 
 Request:  ``<task code><field>;;<field>;;...\\r\\n`` (no separator after the task code)
 Response: ``0;;<field>;;...\\r\\n`` on success, anything else (``<code>;;<error>``) on failure.
@@ -59,7 +61,7 @@ def decode(data: bytes) -> tuple[bool, list[str]]:
 
 
 def touch_event(kind: int, finger: int, x: float, y: float) -> str:
-    # VERIFY: coordinates are points (upstream multiplies by 10 and zero-pads to 5 digits).
+    # Pixel coordinates (verified on iOS 16), sent x10 and zero-padded to 5 digits as upstream.
     if not 0 <= finger <= 19:
         raise ProtocolError("finger index must be 0–19")
     xi, yi = round(x * 10), round(y * 10)
@@ -76,13 +78,13 @@ def touch(events: Sequence[str]) -> bytes:
 
 def ocr_request(x: float, y: float, width: float, height: float) -> bytes:
     # Fields: mode=1, rect, custom words, min height, level (0=accurate), languages, autocorrect,
-    # debug image path. VERIFY on iOS 16.
+    # debug image path. Verified on iOS 16.
     rect = ",,".join(str(int(v)) for v in (x, y, width, height))
     return encode(TASK_TEXT_RECOGNIZER, 1, rect, "", "", 0, "", 0, "")
 
 
 def parse_ocr(fields: Sequence[str]) -> list[tuple[str, float, float, float, float]]:
-    """Each field is ``text,,x,,y,,width,,height``. VERIFY: units (points vs pixels)."""
+    """Each field is ``text,,x,,y,,width,,height`` in pixels, top-left origin (verified, iOS 16)."""
     out: list[tuple[str, float, float, float, float]] = []
     for raw in fields:
         parts = raw.split(",,")

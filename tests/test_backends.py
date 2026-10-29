@@ -10,7 +10,7 @@ from agent.backends import zxtouch_protocol as proto
 from agent.backends.mock import MockBackend
 from agent.backends.zxtouch import ZXTouchBackend, is_exposed, require_loopback
 from agent.errors import BackendUnsupported, ConfigError
-from agent.types import Button
+from agent.types import Button, Rect
 
 # ---- mock backend --------------------------------------------------------------------
 
@@ -99,10 +99,12 @@ class FakeZXTouch:
                 if line.startswith(b"10"):
                     continue  # touches get no reply
                 if line == b"251":
-                    self.server.sendall(b"0;;375;;812\r\n")
+                    self.server.sendall(b"0;;1125;;2436\r\n")  # pixels
+                elif line == b"253":
+                    self.server.sendall(b"0;;3.000000\r\n")
                 elif line.startswith(b"27"):
                     self.server.sendall(
-                        b"0;;About,,20,,150,,60,,20;;iOS Version,,20,,195,,90,,20\r\n"
+                        b"0;;About,,60,,450,,180,,60;;iOS Version,,60,,585,,270,,60\r\n"
                     )
                 else:
                     self.server.sendall(b"0\r\n")
@@ -124,11 +126,15 @@ def test_zxtouch_backend_round_trip(fake_zx: FakeZXTouch) -> None:
     tree = dev.ui_tree()
     assert tree is not None
     assert [c.label for c in tree.children] == ["About", "iOS Version"]
+    assert tree.children[0].frame == Rect(20, 150, 60, 20)  # points
+    assert not tree.label  # the root carries no text of its own
     dev.tap(20, 30)
     dev.type_text("hi")
     dev.launch_app("com.apple.Preferences")
-    sent = fake_zx.received
-    assert b"1011050020000300" in sent and b"1010050020000300" in sent
+    sent = list(fake_zx.received)
+    # 20,30 points -> 60,90 pixels, x10 on the wire
+    assert b"1011050060000900" in sent and b"1010050060000900" in sent
+    assert b"271;;0,,0,,1125,,2436;;;;;;0;;;;0;;" in sent
     assert b"241;;h" in sent and b"241;;i" in sent
     assert b"11com.apple.Preferences" in sent
     assert not any(line.startswith(b"13") for line in sent)  # never the root-shell task
@@ -136,4 +142,20 @@ def test_zxtouch_backend_round_trip(fake_zx: FakeZXTouch) -> None:
         dev.screenshot()
     with pytest.raises(BackendUnsupported):
         dev.press_button(Button.VOLUME_UP)
+
+    def flush() -> None:
+        # Touches get no reply; a request that does guarantees the fake has seen them all.
+        dev._request(proto.encode(proto.TASK_GET_DEVICE_INFO, proto.DEVICE_INFO_SCREEN_SIZE))
+
+    # scroll swipes hold still before lifting; the home gesture is a flick (no hold)
+    fake_zx.received.clear()
+    dev.swipe(100, 600, 100, 300, 50)
+    flush()
+    moves = [line for line in fake_zx.received if line.startswith(b"1012")]
+    assert moves[-1] == moves[-2] == b"1012050300009000"
+    fake_zx.received.clear()
+    dev.press_button(Button.HOME)
+    flush()
+    moves = [line for line in fake_zx.received if line.startswith(b"1012")]
+    assert moves[-1] != moves[-2]
     dev.close()
