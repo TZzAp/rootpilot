@@ -63,6 +63,11 @@ def _load(args: argparse.Namespace) -> Config:
 
 
 def doctor(args: argparse.Namespace, out: TextIO) -> int:
+    return _print_checks(doctor_checks(args), out)
+
+
+def doctor_checks(args: argparse.Namespace) -> list[tuple[str, str, str]]:
+    """(name, status, detail) for every check; used by the CLI and the control page."""
     checks: list[tuple[str, str, str]] = []
 
     def add(name: str, status: str, detail: str) -> None:
@@ -83,7 +88,7 @@ def doctor(args: argparse.Namespace, out: TextIO) -> int:
         cfg = _load(args)
     except RootPilotError as exc:
         add("config", FAIL, str(exc))
-        return _print_checks(checks, out)
+        return checks
 
     key = {
         "anthropic": cfg.anthropic_api_key,
@@ -104,6 +109,17 @@ def doctor(args: argparse.Namespace, out: TextIO) -> int:
         size = backend.screen_size()
         caps = ", ".join(sorted(c.value for c in backend.capabilities()))
         add("backend", OK, f"{backend.name}: {size.width:.0f}x{size.height:.0f} points; {caps}")
+        engine = getattr(backend, "ocr_engine", None)
+        if engine is not None:
+            if engine() == "overlay":
+                add("screen reading", OK, "overlay OCR (Vision, no SpringBoard leak)")
+            else:
+                add(
+                    "screen reading",
+                    WARN,
+                    "ZXTouch OCR: leaks SpringBoard memory (~20 MB per read); install the "
+                    "overlay (hud/README.md)",
+                )
         backend.close()
     except RootPilotError as exc:
         add("backend", FAIL, f"{cfg.backend}: {exc}")
@@ -147,7 +163,7 @@ def doctor(args: argparse.Namespace, out: TextIO) -> int:
         WARN if stop_file().exists() else OK,
         f"{stop_file()} {'EXISTS: runs stop immediately' if stop_file().exists() else 'absent'}",
     )
-    return _print_checks(checks, out)
+    return checks
 
 
 def _control_page_check(cfg: Config) -> tuple[str, str]:
@@ -244,11 +260,11 @@ def make_agent(cfg: Config, args: argparse.Namespace, out: TextIO, interactive: 
     return agent
 
 
-def make_agent_for_serve(state: Any) -> Agent:
+def make_agent_for_serve(state: Any, overrides: Optional[dict[str, Any]] = None) -> Agent:
     """Build an agent whose prompts and output are routed to the control page."""
     from agent.serve import server_ask, server_confirm
 
-    cfg = load_config()
+    cfg = load_config(overrides=overrides)
     redactor = Redactor(cfg.secrets())
     backend = make_backend(cfg, None)
     sd = ensure_private_dir(state_dir())
@@ -371,12 +387,74 @@ def build_parser() -> argparse.ArgumentParser:
     p_cap.add_argument("--interval", type=float, default=0.25, help="seconds between frames")
     p_cap.add_argument("--name", default="capture", help="folder name under captures/")
     p_cap.add_argument("--width", type=int, default=540, help="output width in pixels")
+    p_bench = sub.add_parser(
+        "bench", parents=[common], help="run the RootPilot Arena benchmark via the control page"
+    )
+    p_bench.add_argument("--suite", default="quick", help="quick or full")
+    p_bench.add_argument("--seed", type=int, default=7, help="same seed = same puzzles")
+    p_bench.add_argument("--json", action="store_true", help="print the full report as JSON")
     sub.add_parser(
         "daemon-plist",
         parents=[common],
         help="print a launchd plist that keeps the control page running (rootful or rootless)",
     )
     return parser
+
+
+def bench(args: argparse.Namespace, out: TextIO) -> int:
+    """Start an arena benchmark on the running control server and wait for its report."""
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+
+    cfg = _load(args)
+    token_path = serve_token_file()
+    if not token_path.exists():
+        out.write("error: the control page isn't set up; run rootpilot serve first\n")
+        return 2
+    base = f"http://127.0.0.1:{cfg.serve_port}/{token_path.read_text('utf-8').strip()}/api/bench"
+
+    def call(body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        req = urllib.request.Request(
+            base,
+            data=json.dumps(body).encode() if body is not None else None,
+            headers={"Content-Type": "application/json"},
+            method="POST" if body is not None else "GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+                data: dict[str, Any] = json.load(resp)
+                return data
+        except urllib.error.HTTPError as exc:
+            return {"error": json.load(exc).get("error", str(exc))}
+
+    started = call({"suite": args.suite, "seed": args.seed})
+    if started.get("error"):
+        out.write(f"error: {started['error']}\n")
+        return 1
+    seen = 0
+    while True:
+        time.sleep(3)
+        status = call()
+        for row in status.get("rows", [])[seen:]:
+            out.write(f"  {row['title']:<16} {row['correct']}/{row['total']}  {row['seconds']} s\n")
+        seen = len(status.get("rows", [])) if status.get("running") else seen
+        if not status.get("running"):
+            report = status.get("last") or {}
+            break
+    if args.json:
+        out.write(json.dumps(report, indent=1) + "\n")
+        return 0
+    t = report.get("totals", {})
+    for row in report.get("games", [])[seen:]:
+        out.write(f"  {row['title']:<16} {row['correct']}/{row['total']}  {row['seconds']} s\n")
+    out.write(
+        f"\nScore {t.get('score')}% ({t.get('correct')}/{t.get('total')}), "
+        f"{t.get('mistakes')} mistakes, {t.get('seconds')} s, {t.get('steps')} steps; "
+        f"report {report.get('id')}\n"
+    )
+    return 0
 
 
 def install_icon(args: argparse.Namespace, out: TextIO) -> int:
@@ -406,7 +484,7 @@ def install_icon(args: argparse.Namespace, out: TextIO) -> int:
 
 def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
     args = build_parser().parse_args(argv)
-    for name in ("yes_to", "max_steps", "save_screens", "key_stdin", "port", "remove"):
+    for name in ("yes_to", "max_steps", "save_screens", "key_stdin", "port", "remove", "json"):
         if not hasattr(args, name):
             setattr(args, name, None)
     try:
@@ -433,6 +511,8 @@ def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
             folder = request_capture(args.frames, args.interval, args.name, args.width)
             out.write(f"{folder}\n")
             return 0
+        if args.command == "bench":
+            return bench(args, out)
         if args.command == "daemon-plist":
             from agent.daemon import daemon_plist, install_path
 

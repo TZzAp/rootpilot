@@ -21,246 +21,454 @@
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body {
-    margin:0; background:var(--bg); color:var(--fg);
+    margin:0 auto; background:var(--bg); color:var(--fg); max-width:640px;
     font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
-    max-width:620px; margin:0 auto;
+    padding:0 16px calc(24px + env(safe-area-inset-bottom));
   }
-  header { display:flex; align-items:center; gap:10px; margin:6px 0 16px; }
-  header .dot { width:12px; height:12px; border-radius:50%; background:var(--dim); flex:none; }
-  header .dot.on { background:var(--ok); box-shadow:0 0 10px var(--ok); animation:pulse 1.4s infinite; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg);
+    padding:max(12px,env(safe-area-inset-top)) 0 8px; }
+  .bar { display:flex; align-items:center; gap:10px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--dim); flex:none; }
+  .dot.on { background:var(--ok); box-shadow:0 0 10px var(--ok); animation:pulse 1.4s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-  h1 { font-size:19px; margin:0; font-weight:650; letter-spacing:.2px; }
-  header .state { margin-left:auto; font-size:13px; color:var(--dim); }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:14px; }
-  textarea {
-    width:100%; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
-    border-radius:10px; padding:11px; font:inherit; resize:vertical; min-height:62px;
-  }
-  textarea:focus { outline:none; border-color:var(--accent); }
+  h1 { font-size:19px; margin:0; font-weight:650; }
+  .state { margin-left:auto; font-size:13px; color:var(--dim); }
+  .icon-btn { flex:none; width:36px; height:36px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--fg); font-size:18px; padding:0; }
+  .stopbar { margin-top:10px; width:100%; padding:14px; border:0; border-radius:12px; font:inherit;
+    font-weight:800; font-size:17px; letter-spacing:.5px; background:var(--bad); color:#fff; }
+  nav { display:flex; gap:6px; margin-top:10px; }
+  nav button { flex:1; padding:9px 4px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--dim); font:inherit; font-size:14px; font-weight:600; }
+  nav button.sel { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin:12px 0; }
+  h2 { font-size:13px; margin:0 0 8px; color:var(--dim); font-weight:700; letter-spacing:.4px; text-transform:uppercase; }
+  textarea, input, select { width:100%; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    border-radius:10px; padding:11px; font:inherit; }
+  textarea { resize:vertical; min-height:62px; }
+  textarea:focus, input:focus, select:focus { outline:none; border-color:var(--accent); }
+  label { display:block; font-size:13px; color:var(--dim); margin:10px 0 4px; }
   .row { display:flex; gap:10px; margin-top:10px; }
-  button {
-    font:inherit; font-weight:600; border:none; border-radius:10px; padding:12px 16px;
-    color:#fff; background:var(--accent); flex:1; cursor:pointer; transition:filter .15s,opacity .15s;
-  }
-  button:active { filter:brightness(.9); }
-  button:disabled { opacity:.4; }
+  .row > * { flex:1; }
+  button.btn { font:inherit; font-weight:600; border:none; border-radius:10px; padding:12px 14px;
+    color:#fff; background:var(--accent); cursor:pointer; }
+  button.btn:disabled { opacity:.4; }
   button.ghost { background:var(--panel2); color:var(--fg); border:1px solid var(--line); }
-  button.stop { background:var(--bad); }
-  button.ok { background:var(--ok); color:#06240f; }
-  button.warn { background:var(--warn); color:#3a2600; }
+  button.red { background:var(--bad); } button.green { background:var(--ok); color:#06240f; }
+  button.amber { background:var(--warn); color:#3a2600; }
   .log { background:#05070a; border:1px solid var(--line); border-radius:10px; padding:12px;
     font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap;
-    word-break:break-word; max-height:46vh; overflow:auto; color:#cdd6e0; }
-  @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .log{ background:#0b0d10; } }
-  .log .act { color:var(--accent); } .log .think { color:var(--dim); }
-  .log .deny { color:var(--bad); } .log .warnln { color:var(--warn); }
+    word-break:break-word; max-height:40vh; overflow:auto; color:#cdd6e0; }
+  .log .act { color:#7cc0ff; } .log .think { color:#8b95a1; } .log .deny { color:var(--bad); } .log .warnln { color:var(--warn); }
   .muted { color:var(--dim); font-size:13px; }
-  .result { border-left:3px solid var(--ok); padding-left:12px; }
-  .result.bad { border-color:var(--warn); }
+  .result { border-left:3px solid var(--ok); }
+  .result.bad { border-left-color:var(--warn); }
   .pending { border:1px solid var(--warn); background:rgba(255,176,32,.08); }
-  .pending .reason { color:var(--warn); margin:6px 0 12px; font-weight:600; }
+  .pending .reason { color:var(--warn); margin:6px 0 10px; font-weight:600; }
   .quick { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-  .quick button { flex:none; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
-    font-weight:500; font-size:13px; padding:8px 12px; }
-  .strip { display:flex; flex-wrap:wrap; gap:6px; margin:-6px 0 14px; }
-  .chip { font-size:12px; padding:4px 9px; border-radius:999px; background:var(--panel2);
-    border:1px solid var(--line); color:var(--dim); }
+  .quick button { background:var(--panel2); color:var(--fg); border:1px solid var(--line); border-radius:999px;
+    font:inherit; font-size:13px; padding:7px 12px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { font-size:12px; padding:4px 9px; border-radius:999px; background:var(--panel2); border:1px solid var(--line); color:var(--dim); }
   .chip.good { color:var(--ok); border-color:rgba(57,217,138,.35); }
   .chip.bad { color:var(--bad); border-color:rgba(255,92,92,.45); }
-  .runs { list-style:none; margin:0; padding:0; }
-  .runs li { padding:10px 2px; border-top:1px solid var(--line); cursor:pointer; }
-  .runs li:first-child { border-top:none; }
-  .runs .t { font-weight:600; font-size:14px; }
-  .runs .a { color:var(--dim); font-size:13px; margin-top:2px; }
-  h2 { font-size:14px; margin:0 0 6px; color:var(--dim); font-weight:600; letter-spacing:.3px; }
+  .list { list-style:none; margin:0; padding:0; }
+  .list li { padding:10px 2px; border-top:1px solid var(--line); }
+  .list li:first-child { border-top:none; }
+  .list li.tap { cursor:pointer; }
+  .list .t { font-weight:600; font-size:14px; } .list .a { color:var(--dim); font-size:13px; margin-top:2px; }
+  .screen { width:100%; border-radius:12px; border:1px solid var(--line); display:block; background:#000; min-height:120px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 4px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:600; border-top:none; }
+  .score { font-size:34px; font-weight:800; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20; display:flex; align-items:flex-end; }
+  .sheet { background:var(--panel); width:100%; max-width:640px; margin:0 auto; max-height:86vh; overflow:auto;
+    border-radius:18px 18px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom)); }
   .hide { display:none !important; }
+  .switch { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--dim); }
+  .switch input { width:auto; }
 </style>
 </head>
 <body>
 <header>
-  <span class="dot" id="dot"></span>
-  <h1>RootPilot</h1>
-  <span class="state" id="state">idle</span>
+  <div class="bar">
+    <span class="dot" id="dot"></span>
+    <h1>RootPilot</h1>
+    <span class="state" id="state">…</span>
+    <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
+  </div>
+  <button class="stopbar hide" id="stopbar">■ STOP AI</button>
+  <nav>
+    <button data-tab="run" class="sel">Run</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="bench">Benchmark</button>
+    <button data-tab="system">System</button>
+  </nav>
 </header>
 
-<div class="strip" id="strip"></div>
-
-<div class="card" id="composer">
-  <textarea id="task" placeholder="Tell RootPilot what to do on this iPhone…
-e.g. open Settings and tell me the iOS version"></textarea>
-  <div class="quick" id="quick"></div>
-  <div class="row">
-    <button id="start">Start</button>
+<!-- RUN -->
+<section id="tab-run">
+  <div class="card">
+    <textarea id="task" placeholder="Tell RootPilot what to do on this iPhone…"></textarea>
+    <div class="quick" id="quick"></div>
+    <div class="row"><button class="btn" id="start">Start</button></div>
   </div>
-</div>
 
-<div class="card pending hide" id="pendingCard">
-  <div><b id="pendTitle">Confirm action</b></div>
-  <div class="reason" id="pendReason"></div>
-  <input id="askInput" class="hide" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:inherit" placeholder="Your answer…">
-  <div class="row" id="confirmRow">
-    <button class="ok" data-a="yes">Allow</button>
-    <button class="stop" data-a="no">Deny</button>
-    <button class="warn hide" data-a="always" id="alwaysBtn">Always</button>
+  <div class="card pending hide" id="pendingCard">
+    <b id="pendTitle">Confirm</b>
+    <div class="reason" id="pendReason"></div>
+    <input id="askInput" class="hide" placeholder="Your answer…">
+    <div class="row" id="confirmRow">
+      <button class="btn green" data-a="yes">Allow</button>
+      <button class="btn red" data-a="no">Deny</button>
+      <button class="btn amber hide" data-a="always" id="alwaysBtn">Always</button>
+    </div>
+    <div class="row hide" id="askRow"><button class="btn" id="askSend">Answer</button></div>
   </div>
-</div>
 
-<div class="card result hide" id="resultCard"></div>
+  <div class="card result hide" id="resultCard"></div>
 
-<div class="card" id="runCard">
-  <div class="row" style="margin:0 0 10px">
-    <button class="stop hide" id="stop">Stop run</button>
-    <button class="ghost" id="clear">Clear log</button>
+  <div class="card">
+    <div class="bar"><h2 style="margin:0">Live screen</h2>
+      <label class="switch" style="margin:0 0 0 auto"><input type="checkbox" id="liveToggle"> auto-refresh</label></div>
+    <img class="screen hide" id="screen" alt="Current screen">
+    <div class="row"><button class="btn ghost" id="snap">Show current screen</button></div>
+    <div class="muted" id="screenNote"></div>
   </div>
-  <div class="log" id="log"><span class="muted">No run yet. Enter a task and press Start.</span></div>
-</div>
 
-<div class="card" id="historyCard">
-  <h2>RECENT RUNS</h2>
-  <ul class="runs" id="runs"><li class="muted">none yet</li></ul>
-</div>
+  <div class="card">
+    <div class="bar"><h2 style="margin:0">Steps</h2>
+      <button class="btn ghost" id="clearLog" style="margin-left:auto;padding:6px 10px;font-size:13px">Clear</button></div>
+    <div class="log" id="log" style="margin-top:8px"><span class="muted">No run yet.</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent runs</h2>
+    <ul class="list" id="runs"><li class="muted">none yet</li></ul>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<section id="tab-settings" class="hide">
+  <div class="card">
+    <h2>Model provider</h2>
+    <label for="provider">Provider</label>
+    <select id="provider"></select>
+    <label for="model">Model <span class="muted" id="modelHint"></span></label>
+    <input id="model" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="compatBox" class="hide">
+      <label for="compatUrl">Server URL</label>
+      <input id="compatUrl" placeholder="http://127.0.0.1:8080/v1" autocapitalize="off">
+    </div>
+    <label for="apiKey">API key <span id="keyState" class="muted"></span></label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="leave empty to keep the stored key">
+    <label for="effort">Thinking</label>
+    <select id="effort">
+      <option value="">provider default</option>
+      <option value="off">off — fastest (DeepSeek); minimal for Claude</option>
+      <option value="low">low</option>
+      <option value="medium">medium</option>
+      <option value="high">high</option>
+      <option value="max">max — slowest</option>
+    </select>
+    <div class="row">
+      <div><label for="maxSteps">Max steps per run</label><input id="maxSteps" type="number" min="1" max="1000"></div>
+      <div><label for="maxMinutes">Max minutes per run</label><input id="maxMinutes" type="number" min="0.5" max="240" step="0.5"></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="save">Save</button>
+      <button class="btn ghost" id="testProvider">Test provider</button>
+    </div>
+    <div class="muted" id="settingsMsg" style="margin-top:10px"></div>
+  </div>
+  <div class="card muted">
+    Keys are stored on this iPhone with mode 0600 and are never shown again. Changes apply to the next run.
+  </div>
+</section>
+
+<!-- BENCHMARK -->
+<section id="tab-bench" class="hide">
+  <div class="card">
+    <h2>RootPilot Arena</h2>
+    <div class="muted">Short, seeded mini-games that measure reading the screen, tapping accurately,
+      sequencing, scrolling, typing and simple reasoning. Run the same suite and seed on another
+      phone to compare them head to head.</div>
+    <div class="row">
+      <div><label for="suite">Suite</label><select id="suite"></select></div>
+      <div><label for="seed">Seed</label><input id="seed" type="number" value="7" min="1"></div>
+    </div>
+    <div class="muted" id="suiteGames" style="margin-top:6px"></div>
+    <div class="row"><button class="btn" id="runBench">Run benchmark</button></div>
+  </div>
+  <div class="card hide" id="benchLive">
+    <h2 id="benchLiveTitle">Running…</h2>
+    <div id="benchTable"></div>
+  </div>
+  <div class="card">
+    <h2>Results</h2>
+    <ul class="list" id="reports"><li class="muted">no benchmark yet</li></ul>
+  </div>
+</section>
+
+<!-- SYSTEM -->
+<section id="tab-system" class="hide">
+  <div class="card"><h2>Status</h2><div class="chips" id="chips"></div></div>
+  <div class="card">
+    <div class="bar"><h2 style="margin:0">Health checks</h2>
+      <button class="btn ghost" id="runDoctor" style="margin-left:auto;padding:6px 10px;font-size:13px">Run</button></div>
+    <ul class="list" id="doctor" style="margin-top:6px"><li class="muted">tap Run</li></ul>
+  </div>
+  <div class="card">
+    <h2>Maintenance</h2>
+    <div class="row"><button class="btn ghost" id="reload">Reload page</button>
+      <button class="btn red" id="clearHistory">Clear run history</button></div>
+    <div class="muted" id="sysMsg" style="margin-top:8px"></div>
+  </div>
+</section>
+
+<div class="modal hide" id="modal"><div class="sheet" id="sheet"></div></div>
 
 <script>
+"use strict";
 const $ = s => document.querySelector(s);
-const api = (p, body) => fetch(p, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : {}).then(r=>r.json());
-const QUICK = [
-  "open Settings and tell me the iOS version",
-  "what is my battery percentage?",
-  "open the Clock app and tell me what alarms are set",
-];
+const esc = s => String(s ?? "").replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  let data = {}; try { data = await r.json(); } catch (e) {}
+  if (!r.ok && !data.error) data.error = `HTTP ${r.status}`;
+  return data;
+}
 
-const quick = $("#quick");
+// ---- tabs ----
+let tab = "run";
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("sel", x === b));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("hide", s.id !== "tab-" + tab));
+  if (tab === "settings") loadSettings();
+  if (tab === "bench") loadBench();
+  if (tab === "system") loadInfo();
+});
+
+// ---- run ----
+const QUICK = ["open Settings and tell me the iOS version", "what is my battery percentage?",
+  "open the Calculator app and calculate 128 times 7", "open the Clock app and tell me what alarms are set"];
 for (const q of QUICK) {
   const b = document.createElement("button");
-  b.textContent = q.length > 34 ? q.slice(0,32)+"…" : q;
-  b.title = q; b.onclick = () => { $("#task").value = q; $("#task").focus(); };
-  quick.appendChild(b);
+  b.textContent = q.length > 34 ? q.slice(0, 32) + "…" : q; b.title = q;
+  b.onclick = () => { $("#task").value = q; $("#task").focus(); };
+  $("#quick").appendChild(b);
+}
+function lineClass(l) { return l.startsWith("→") ? "act" : l.startsWith("💭") ? "think" : l.startsWith("⛔") ? "deny" : l.startsWith("⚠") ? "warnln" : ""; }
+let logCleared = false;
+function renderLog(lines) {
+  if (logCleared && lines.length) logCleared = false;
+  if (logCleared) return;
+  $("#log").innerHTML = lines.length ? lines.map(l => { const c = lineClass(l); return c ? `<span class="${c}">${esc(l)}</span>` : esc(l); }).join("\n")
+    : '<span class="muted">No run yet.</span>';
+  $("#log").scrollTop = $("#log").scrollHeight;
 }
 
-function classify(line){
-  if (line.startsWith("→")) return "act";
-  if (line.startsWith("💭")) return "think";
-  if (line.startsWith("⛔")) return "deny";
-  if (line.startsWith("⚠")) return "warnln";
-  return "";
-}
-function renderLog(lines){
-  const log = $("#log");
-  if (!lines.length){
-    log.innerHTML = '<span class="muted">No run yet. Enter a task and press Start.</span>';
-    return;
-  }
-  log.innerHTML = lines.map(l=>{
-    const c = classify(l);
-    const esc = l.replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
-    return c ? `<span class="${c}">${esc}</span>` : esc;
-  }).join("\n");
-  log.scrollTop = log.scrollHeight;
-}
-
-let lastPending = null;
-async function refresh(){
-  let s; try { s = await api("api/status"); } catch(e){ $("#state").textContent="offline"; return; }
-  const running = s.running;
-  $("#dot").classList.toggle("on", running);
-  $("#state").textContent = running ? "running" : (s.result ? s.result.reason : "idle");
-  $("#start").disabled = running;
-  $("#stop").classList.toggle("hide", !running);
+let pending = null, running = false, benchRunning = false, lastRunning = false;
+async function refreshStatus() {
+  let s; try { s = await api("api/status"); } catch (e) { $("#state").textContent = "offline"; return; }
+  running = s.running;
+  const busy = running || benchRunning;
+  $("#dot").classList.toggle("on", busy);
+  $("#state").textContent = benchRunning ? "benchmark" : running ? "running" : (s.result ? s.result.reason : "idle");
+  $("#stopbar").classList.toggle("hide", !busy);
+  $("#start").disabled = busy; $("#runBench").disabled = busy;
   renderLog(s.lines || []);
-
-  // result
   const rc = $("#resultCard");
-  if (s.result && !running){
-    rc.classList.remove("hide");
-    rc.classList.toggle("bad", !s.result.success);
-    rc.innerHTML = `<div><b>${s.result.success?"✅ Done":"⚠️ Ended"}</b> · ${s.result.reason} · ${s.result.steps} steps</div>
-      <div style="margin-top:6px">${s.result.answer.replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]))}</div>`;
-  } else { rc.classList.add("hide"); }
-
-  // pending confirm / ask
+  if (s.result && !running) {
+    rc.classList.remove("hide"); rc.classList.toggle("bad", !s.result.success);
+    rc.innerHTML = `<b>${s.result.success ? "✅ Done" : "⚠️ Ended"}</b> · ${esc(s.result.reason)} · ${s.result.steps} steps<div style="margin-top:6px">${esc(s.result.answer)}</div>`;
+  } else rc.classList.add("hide");
   const pc = $("#pendingCard");
-  if (s.pending){
-    pc.classList.remove("hide");
-    lastPending = s.pending;
+  if (s.pending) {
     const isAsk = s.pending.kind === "ask";
+    if (!pending || pending.id !== s.pending.id) $("#askInput").value = "";
+    pending = s.pending; pc.classList.remove("hide");
     $("#pendTitle").textContent = isAsk ? "RootPilot is asking" : `Allow “${s.pending.tool}”?`;
     $("#pendReason").textContent = s.pending.reason;
-    $("#askInput").classList.toggle("hide", !isAsk);
+    $("#askInput").classList.toggle("hide", !isAsk); $("#askRow").classList.toggle("hide", !isAsk);
     $("#confirmRow").classList.toggle("hide", isAsk);
     $("#alwaysBtn").classList.toggle("hide", !s.pending.allow_always);
-    if (isAsk && !$("#askInput").dataset.wired){
-      $("#askInput").dataset.wired = "1";
-      $("#askInput").onkeydown = e => { if(e.key==="Enter"){ answer($("#askInput").value); } };
-    }
-  } else { pc.classList.add("hide"); lastPending = null; }
+  } else { pending = null; pc.classList.add("hide"); }
+  if (lastRunning && !running) loadRuns();
+  lastRunning = running;
 }
-
-async function answer(value){
-  if (!lastPending) return;
-  await api("api/confirm", {id:lastPending.id, answer:value});
-  $("#askInput").value = "";
-  lastPending = null; $("#pendingCard").classList.add("hide");
-  tick();
-}
-document.querySelectorAll("#confirmRow button").forEach(b=> b.onclick = ()=>answer(b.dataset.a));
-$("#askInput").addEventListener("keydown", e=>{ if(e.key==="Enter") answer($("#askInput").value); });
-
+async function answer(value) { if (!pending) return; await api("api/confirm", {id: pending.id, answer: value}); pending = null; refreshStatus(); }
+document.querySelectorAll("#confirmRow button").forEach(b => b.onclick = () => answer(b.dataset.a));
+$("#askSend").onclick = () => answer($("#askInput").value);
 $("#start").onclick = async () => {
-  const task = $("#task").value.trim();
-  if (!task) return;
-  $("#resultCard").classList.add("hide");
-  const r = await api("api/run", {task});
-  if (r.error) alert(r.error); else tick();
+  const task = $("#task").value.trim(); if (!task) return;
+  const r = await api("api/run", {task}); if (r.error) alert(r.error); refreshStatus();
 };
-$("#stop").onclick = () => api("api/stop", {}).then(tick);
-$("#clear").onclick = () => { $("#log").innerHTML = '<span class="muted">cleared</span>'; };
+async function stopAll() { await api("api/stop", {}); refreshStatus(); }
+$("#stopbar").onclick = stopAll;
+$("#clearLog").onclick = () => { logCleared = true; $("#log").innerHTML = '<span class="muted">cleared</span>'; };
 
-const esc = s => String(s ?? "").replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
-
-let serverStarted = null;
-async function loadInfo(){
-  let i; try { i = await api("api/info"); } catch(e){ return; }
-  // The server restarted (e.g. after an update): load the new page instead of a stale one.
-  if (serverStarted !== null && i.started !== serverStarted) { location.reload(); return; }
-  serverStarted = i.started;
-  const chips = [];
-  if (i.config_error) chips.push(`<span class="chip bad">config: ${esc(i.config_error)}</span>`);
-  else chips.push(`<span class="chip">${esc(i.provider)} · ${esc(i.model)}</span>`, `<span class="chip">${esc(i.backend)}</span>`);
-  const o = i.overlay || {};
-  chips.push(o.loaded ? `<span class="chip good">edge glow on</span>`
-    : o.installed ? `<span class="chip bad">edge glow not loaded</span>` : `<span class="chip">no edge glow</span>`);
-  if (i.zxtouch_loopback_only === true) chips.push(`<span class="chip good">ZXTouch loopback-only</span>`);
-  if (i.zxtouch_loopback_only === false) chips.push(`<span class="chip bad">ZXTouch exposed!</span>`);
-  chips.push(`<span class="chip">v${esc(i.version)}</span>`);
-  $("#strip").innerHTML = chips.join("");
+// live screen
+let liveTimer = null, snapping = false;
+async function snap() {
+  if (snapping) return; snapping = true;
+  try {
+    const r = await fetch("api/screen");
+    if (r.ok) {
+      const url = URL.createObjectURL(await r.blob());
+      const img = $("#screen"); const old = img.src; img.src = url; img.classList.remove("hide");
+      if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+      $("#screenNote").textContent = "updated " + new Date().toLocaleTimeString();
+    } else { const d = await r.json().catch(() => ({})); $("#screenNote").textContent = d.error || "no screen"; }
+  } finally { snapping = false; }
 }
+$("#snap").onclick = snap;
+$("#liveToggle").onchange = e => {
+  clearInterval(liveTimer); liveTimer = null;
+  if (e.target.checked) { snap(); liveTimer = setInterval(() => { if (tab === "run" && !document.hidden) snap(); }, 3000); }
+};
 
-async function loadRuns(){
-  let runs; try { runs = await api("api/runs"); } catch(e){ return; }
-  if (!runs.length) return;
+// recent runs + details
+async function loadRuns() {
+  const runs = await api("api/runs"); if (!Array.isArray(runs) || !runs.length) return;
   $("#runs").innerHTML = runs.map(r => {
     const mark = r.success === true ? "✅" : r.success === false ? "⚠️" : "…";
-    const when = r.ts ? new Date(r.ts*1000).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : "";
-    return `<li data-task="${esc(r.task)}"><div class="t">${mark} ${esc(r.task)}</div>
-      <div class="a">${esc(when)} · ${esc(r.reason)}${r.steps!=null?` · ${r.steps} steps`:""}${r.answer?` — ${esc(r.answer)}`:""}</div></li>`;
+    const when = r.ts ? new Date(r.ts * 1000).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : "";
+    return `<li class="tap" data-id="${esc(r.run_id)}"><div class="t">${mark} ${esc(r.task.slice(0, 120))}</div>
+      <div class="a">${esc(when)} · ${esc(r.reason)}${r.steps != null ? ` · ${r.steps} steps` : ""}${r.answer ? ` — ${esc(String(r.answer).slice(0, 140))}` : ""}</div></li>`;
   }).join("");
-  document.querySelectorAll("#runs li").forEach(li => li.onclick = () => {
-    $("#task").value = li.dataset.task; window.scrollTo({top:0, behavior:"smooth"}); $("#task").focus();
-  });
+  document.querySelectorAll("#runs li").forEach(li => li.onclick = () => showRun(li.dataset.id));
+}
+function openModal(html) { $("#sheet").innerHTML = html; $("#modal").classList.remove("hide"); }
+$("#modal").onclick = e => { if (e.target.id === "modal" || e.target.dataset.close !== undefined) $("#modal").classList.add("hide"); };
+async function showRun(id) {
+  const d = await api("api/runs/" + encodeURIComponent(id));
+  if (d.error) return alert(d.error);
+  const steps = d.steps.map(s => s.kind === "model"
+    ? `<li><div class="t">Step ${s.step}: ${esc(s.calls || "—")}</div>${s.text ? `<div class="a">💭 ${esc(s.text)}</div>` : ""}</li>`
+    : `<li><div class="a ${s.kind === "error" ? "bad" : "warn"}">${esc(s.text)}</div></li>`).join("");
+  openModal(`<div class="bar"><h2 style="margin:0">Run details</h2><button class="icon-btn" data-close style="margin-left:auto">✕</button></div>
+    <p><b>${esc(d.task)}</b></p>
+    <div class="chips"><span class="chip">${esc(d.provider)} · ${esc(d.model)}</span><span class="chip">${esc(d.reason)}</span>
+      <span class="chip">${d.seconds ?? "?"} s</span><span class="chip">${d.input_tokens ?? 0} in / ${d.output_tokens ?? 0} out tokens</span></div>
+    ${d.answer ? `<p>${d.success ? "✅" : "⚠️"} ${esc(d.answer)}</p>` : ""}
+    <ul class="list">${steps || '<li class="muted">no steps</li>'}</ul>
+    <div class="row"><button class="btn" id="again">Run again</button></div>`);
+  $("#again").onclick = () => { $("#task").value = d.task; $("#modal").classList.add("hide"); window.scrollTo({top: 0}); };
 }
 
-let wasRunning = false;
-async function tick(){
-  await refresh();
-  const running = !$("#stop").classList.contains("hide");
-  if (wasRunning && !running) loadRuns();
-  wasRunning = running;
+// ---- settings ----
+let cfg = null;
+async function loadSettings() {
+  cfg = await api("api/config");
+  $("#provider").innerHTML = cfg.providers.map(p => `<option value="${p}">${p}</option>`).join("");
+  $("#provider").value = cfg.provider; $("#model").value = cfg.model || "";
+  $("#effort").value = cfg.effort || ""; $("#maxSteps").value = cfg.max_steps; $("#maxMinutes").value = cfg.max_minutes;
+  $("#compatUrl").value = cfg.compat_base_url || "";
+  syncProvider();
+  $("#settingsMsg").textContent = cfg.error ? "⚠️ " + cfg.error : "";
+}
+function syncProvider() {
+  const p = $("#provider").value;
+  $("#model").placeholder = (cfg && cfg.default_models[p]) || "required";
+  $("#modelHint").textContent = cfg && cfg.default_models[p] ? `(empty = ${cfg.default_models[p]})` : "";
+  $("#keyState").textContent = cfg && cfg.keys[p] ? "· stored ✓" : "· not set";
+  $("#compatBox").classList.toggle("hide", p !== "compat");
+}
+$("#provider").onchange = () => { if (cfg && $("#provider").value !== cfg.provider) $("#model").value = ""; syncProvider(); };
+$("#save").onclick = async () => {
+  const body = { provider: $("#provider").value, model: $("#model").value.trim(), effort: $("#effort").value,
+    max_steps: Number($("#maxSteps").value), max_minutes: Number($("#maxMinutes").value) };
+  if (body.provider === "compat") body.compat_base_url = $("#compatUrl").value.trim();
+  const key = $("#apiKey").value.trim(); if (key) body.api_key = key;
+  const r = await api("api/config", body);
+  if (r.error) { $("#settingsMsg").textContent = "⚠️ " + r.error; return; }
+  $("#apiKey").value = ""; cfg = r; syncProvider(); $("#settingsMsg").textContent = "Saved ✓"; loadInfo();
+};
+$("#testProvider").onclick = async () => {
+  $("#settingsMsg").textContent = "Testing…";
+  const r = await api("api/test-provider", {});
+  $("#settingsMsg").textContent = r.ok ? `✅ ${r.provider} · ${r.model} answered in ${r.seconds} s` : "⚠️ " + (r.error || "failed");
 };
 
-loadInfo(); loadRuns(); tick();
-setInterval(tick, 1000);
+// ---- benchmark ----
+let benchSuites = {};
+function benchRows(rows) {
+  if (!rows || !rows.length) return '<div class="muted">starting…</div>';
+  return `<table><tr><th>Game</th><th>Score</th><th>Miss</th><th>Time</th><th>Steps</th><th>Tokens</th></tr>${rows.map(r =>
+    `<tr><td>${esc(r.title)}</td><td class="${r.correct === r.total ? "ok" : r.correct ? "warn" : "bad"}">${r.correct}/${r.total}</td>
+     <td>${r.mistakes}</td><td>${r.seconds}s</td><td>${r.steps}</td><td>${Math.round((r.input_tokens + r.output_tokens) / 1000)}k</td></tr>`).join("")}</table>`;
+}
+async function loadBench() {
+  const b = await api("api/bench");
+  benchSuites = b.suites || {}; benchRunning = !!b.running;
+  if (!$("#suite").options.length) {
+    $("#suite").innerHTML = Object.keys(benchSuites).map(s => `<option>${s}</option>`).join("");
+    $("#suite").onchange = () => { $("#suiteGames").textContent = (benchSuites[$("#suite").value] || []).join(" · "); };
+    $("#suite").onchange();
+  }
+  $("#benchLive").classList.toggle("hide", !b.running);
+  if (b.running) { $("#benchLiveTitle").textContent = `Running ${b.suite} (seed ${b.seed}) · now: ${b.current || "…"}`; $("#benchTable").innerHTML = benchRows(b.rows); }
+  $("#reports").innerHTML = (b.reports || []).length ? b.reports.map(r => {
+    const t = r.totals || {}, st = r.settings || {};
+    return `<li class="tap" data-id="${esc(r.id)}"><div class="t">${t.score ?? "?"}% · ${esc(r.suite)} (seed ${r.seed})${r.aborted ? " · stopped" : ""}</div>
+      <div class="a">${esc(r.id)} · ${esc(st.provider)} ${esc(st.model)} · thinking ${esc(st.effort)} · ${t.seconds ?? "?"} s · ${t.steps ?? "?"} steps</div></li>`;
+  }).join("") : '<li class="muted">no benchmark yet</li>';
+  document.querySelectorAll("#reports li.tap").forEach(li => li.onclick = () => showReport(li.dataset.id));
+}
+async function showReport(id) {
+  const r = await api("api/bench/" + encodeURIComponent(id)); if (r.error) return alert(r.error);
+  const t = r.totals || {}, d = r.device || {}, st = r.settings || {};
+  openModal(`<div class="bar"><h2 style="margin:0">Benchmark ${esc(r.id)}</h2><button class="icon-btn" data-close style="margin-left:auto">✕</button></div>
+    <div class="score ${t.score >= 80 ? "ok" : t.score >= 50 ? "warn" : "bad"}">${t.score}%</div>
+    <div class="muted">${t.correct}/${t.total} correct · ${t.mistakes} mistakes · ${t.seconds} s · ${t.steps} steps · ${Math.round((t.input_tokens + t.output_tokens) / 1000)}k tokens</div>
+    <div class="chips" style="margin:10px 0"><span class="chip">${esc(d.name)} · iOS ${esc(d.ios)} · ${esc(d.jailbreak)}</span>
+      <span class="chip">${esc(st.provider)} · ${esc(st.model)}</span><span class="chip">thinking ${esc(st.effort)}</span><span class="chip">OCR ${esc(st.ocr)}</span></div>
+    ${benchRows(r.games)}`);
+}
+$("#runBench").onclick = async () => {
+  const r = await api("api/bench", { suite: $("#suite").value, seed: Number($("#seed").value) || 1 });
+  if (r.error) return alert(r.error); benchRunning = true; loadBench(); refreshStatus();
+};
+
+// ---- system ----
+let serverStarted = null;
+async function loadInfo() {
+  let i; try { i = await api("api/info"); } catch (e) { return; }
+  if (serverStarted !== null && i.started !== serverStarted) { location.reload(); return; }
+  serverStarted = i.started; benchRunning = !!i.bench_running;
+  const chips = [];
+  if (i.config_error) chips.push(`<span class="chip bad">config: ${esc(i.config_error)}</span>`);
+  else chips.push(`<span class="chip">${esc(i.provider)} · ${esc(i.model)}</span>`, `<span class="chip">thinking ${esc(i.effort)}</span>`, `<span class="chip">${esc(i.backend)}</span>`);
+  const o = i.overlay || {};
+  chips.push(o.loaded ? '<span class="chip good">edge glow + OCR on</span>' : o.installed ? '<span class="chip bad">overlay not loaded</span>' : '<span class="chip">no overlay</span>');
+  if (i.zxtouch_loopback_only === true) chips.push('<span class="chip good">ZXTouch loopback-only</span>');
+  if (i.zxtouch_loopback_only === false) chips.push('<span class="chip bad">ZXTouch exposed!</span>');
+  chips.push(`<span class="chip">v${esc(i.version)}</span>`);
+  $("#chips").innerHTML = chips.join("");
+}
+$("#runDoctor").onclick = async () => {
+  $("#doctor").innerHTML = '<li class="muted">checking…</li>';
+  const checks = await api("api/doctor");
+  $("#doctor").innerHTML = Array.isArray(checks) ? checks.map(c => `<li><div class="t ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : "bad"}">${c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✗"} ${esc(c.name)}</div><div class="a">${esc(c.detail)}</div></li>`).join("")
+    : `<li class="bad">${esc(checks.error)}</li>`;
+};
+$("#clearHistory").onclick = async () => {
+  if (!confirm("Delete all run logs on this iPhone?")) return;
+  const r = await api("api/runs/clear", {});
+  $("#sysMsg").textContent = r.error ? "⚠️ " + r.error : `Removed ${r.removed} files.`;
+  $("#runs").innerHTML = '<li class="muted">none yet</li>';
+};
+$("#reload").onclick = () => location.reload();
+$("#refresh").onclick = () => { refreshStatus(); loadRuns(); loadInfo(); if (tab === "bench") loadBench(); if (tab === "settings") loadSettings(); };
+
+refreshStatus(); loadRuns(); loadInfo();
+setInterval(refreshStatus, 1000);
 setInterval(loadInfo, 10000);
+setInterval(() => { if (tab === "bench" || benchRunning) loadBench(); }, 2000);
 </script>
 </body>
 </html>

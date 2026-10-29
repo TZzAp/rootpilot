@@ -36,4 +36,7 @@ jobs:
       - run: pytest -m "not device"
       - name: Check the control page script parses
         if: matrix.python-version == '3.12'
-        run: node -e "new Function(require('fs').readFileSync('agent/webui/control.html','utf8').split('<script>')[1].split('</script>')[0])"
+        run: |
+          for f in control arena; do
+            node -e "new Function(require('fs').readFileSync('agent/webui/$f.html','utf8').split('<script>')[1].split('</script>')[0])"
+          done

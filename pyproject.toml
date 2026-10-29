@@ -27,7 +27,7 @@ include = ["agent*"]
 
 [tool.setuptools.package-data]
 "agent.demo" = ["screens/*.json"]
-"agent.webui" = ["control.html", "icon.png"]
+"agent.webui" = ["control.html", "arena.html", "icon.png"]
 
 [tool.ruff]
 target-version = "py39"

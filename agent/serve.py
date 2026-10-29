@@ -9,13 +9,21 @@ watch each step live, answer the confirm prompts, and stop a run. The server:
 
 It is off by default. Starting it is the only way RootPilot opens a listening socket, and even
 then only on loopback — nothing here is reachable from the network.
+
+It also serves the RootPilot Arena (agent/arena.py): seeded mini-games under ``/arena/`` that
+the benchmark runner has the agent play. Arena pages carry no control token (the agent's task
+URL must not leak it) and can only report scores for sessions the benchmark created.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import json
+import os
+import platform
 import secrets
+import shutil
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -23,6 +31,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from agent import control_api
+from agent.arena import GAMES, SUITES, ArenaSessions, score_game, task_for, totals
 from agent.audit import recent_runs
 from agent.config import Config
 from agent.errors import ConfigError
@@ -40,9 +50,18 @@ from agent.types import Usage
 
 CONFIRM_TIMEOUT = 180.0
 MAX_LINES = 120
-CONTROL_HTML = (Path(__file__).resolve().parent / "webui" / "control.html").read_text("utf-8")
+WEBUI = Path(__file__).resolve().parent / "webui"
+CONTROL_HTML = (WEBUI / "control.html").read_text("utf-8")
+ARENA_HTML = (WEBUI / "arena.html").read_text("utf-8")
+DEVICE_NAMES = {
+    "iPhone9,1": "iPhone 7", "iPhone9,3": "iPhone 7", "iPhone9,2": "iPhone 7 Plus",
+    "iPhone9,4": "iPhone 7 Plus", "iPhone10,1": "iPhone 8", "iPhone10,4": "iPhone 8",
+    "iPhone10,2": "iPhone 8 Plus", "iPhone10,5": "iPhone 8 Plus", "iPhone10,3": "iPhone X",
+    "iPhone10,6": "iPhone X",
+}  # fmt: skip
 
-AgentBuilder = Callable[["ControlState", str], Agent]
+# (state, task) or (state, task, overrides=...) -> Agent
+AgentBuilder = Callable[..., Agent]
 
 
 @dataclass
@@ -142,11 +161,33 @@ def server_ask(state: ControlState) -> Callable[[str], str]:
     return ask
 
 
-def default_build_agent(state: ControlState, task: str) -> Agent:
+def default_build_agent(
+    state: ControlState, task: str, overrides: Optional[dict[str, Any]] = None
+) -> Agent:
     # Imported lazily so `serve` starts even when a provider/backend is misconfigured.
     from agent.cli import make_agent_for_serve
 
-    return make_agent_for_serve(state)
+    return make_agent_for_serve(state, overrides)
+
+
+def device_info() -> dict[str, str]:
+    from agent.paths import jbroot
+
+    machine = platform.machine()
+    ios = ""
+    sw_vers = shutil.which("sw_vers") or str(jbroot() / "usr" / "bin" / "sw_vers")
+    try:
+        ios = subprocess.run(
+            [sw_vers, "-productVersion"], capture_output=True, text=True, timeout=5, check=False
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {
+        "machine": machine,
+        "name": DEVICE_NAMES.get(machine, machine),
+        "ios": ios,
+        "jailbreak": "rootless" if str(jbroot()) != "/" else "rootful",
+    }
 
 
 def _loopback(host: str) -> bool:
@@ -168,10 +209,13 @@ class ControlServer:
         self._build = build_agent
         self.token = token or _load_token()
         self.started = time.time()  # lets an open page notice a restart and reload itself
+        self.arena = ArenaSessions()
+        self.bench: dict[str, Any] = {"running": False}
+        self._bench_abort = False
 
     def start_run(self, task: str) -> bool:
         with self.state.lock:
-            if self.state.running:
+            if self.state.running or self.bench.get("running"):
                 return False
             self.state.running = True
         thread = threading.Thread(target=self._run, args=(task,), daemon=True)
@@ -179,14 +223,20 @@ class ControlServer:
         return True
 
     def _run(self, task: str) -> None:
+        self._execute(task)
+
+    def _execute(self, task: str, overrides: Optional[dict[str, Any]] = None) -> RunResult:
+        """Run one task to the end, keeping the page's state current. Never raises."""
         stop_file().unlink(missing_ok=True)  # clear a STOP left by a previous run
         try:
-            agent = self._build(self.state, task)
+            extra = {"overrides": overrides} if overrides else {}
+            agent = self._build(self.state, task, **extra)
         except Exception as exc:
             self.state.begin("", task)
             self.state.report(f"⚠️ cannot start: {exc}")
-            self.state.finish(RunResult("", f"Cannot start: {exc}", False, "error", 0, Usage()))
-            return
+            failed = RunResult("", f"Cannot start: {exc}", False, "error", 0, Usage())
+            self.state.finish(failed)
+            return failed
         self.state.begin(agent.run_id, task)
         result: Optional[RunResult] = None
         try:
@@ -199,8 +249,110 @@ class ControlServer:
             agent.backend.close()
             ended = RunResult(agent.run_id, "Run ended", False, "error", 0, Usage())
             self.state.finish(result or ended)
+        return result or ended
+
+    # ---- benchmark --------------------------------------------------------------------
+
+    def start_bench(self, suite: str, seed: int) -> bool:
+        if suite not in SUITES:
+            raise ConfigError(f"unknown suite {suite!r}; choose {', '.join(SUITES)}")
+        with self.state.lock:
+            if self.state.running or self.bench.get("running"):
+                return False
+            self.bench = {"running": True, "suite": suite, "seed": seed, "rows": [], "current": ""}
+        threading.Thread(target=self._bench, args=(suite, seed), daemon=True).start()
+        return True
+
+    def _bench(self, suite: str, seed: int) -> None:
+        from agent.config import load_config
+        from agent.indicator import hud_installed
+
+        self._bench_abort = False
+        try:
+            cfg = load_config()
+            settings = {
+                "provider": cfg.provider,
+                "model": cfg.model,
+                "effort": cfg.effort or "default",
+            }
+            ocr = cfg.ocr
+        except ConfigError as exc:
+            settings, ocr = {"error": str(exc)}, "auto"
+        if settings.get("provider") and not settings.get("model"):
+            from agent.providers import DEFAULT_MODELS
+
+            settings["model"] = DEFAULT_MODELS.get(str(settings["provider"]), "")
+        settings["ocr"] = (
+            "overlay" if ocr == "hud" or (ocr == "auto" and hud_installed()) else "zxtouch"
+        )
+        report: dict[str, Any] = {
+            "id": time.strftime("%Y%m%d-%H%M%S"),
+            "suite": suite,
+            "seed": seed,
+            "started": time.time(),
+            "device": device_info(),
+            "settings": settings,
+            "games": [],
+        }
+        try:
+            for gid in SUITES[suite]:
+                if self._bench_abort:
+                    break
+                game = GAMES[gid]
+                sid = self.arena.create(gid)
+                url = (
+                    f"http://127.0.0.1:{self.cfg.serve_port}/arena/{gid}"
+                    f"?seed={seed}&s={sid}&r={game.rounds}"
+                )
+                self.bench["current"] = gid
+                began = time.monotonic()
+                result = self._execute(
+                    task_for(game, url, seed),
+                    {"max_steps": game.max_steps, "max_seconds": game.max_seconds},
+                )
+                time.sleep(1.0)  # let the page's last score report land
+                row = score_game(
+                    game, seed, self.arena.result(sid), result, time.monotonic() - began
+                )
+                row["run_id"] = result.run_id
+                report["games"].append(row)
+                self.bench["rows"] = list(report["games"])
+                if result.reason == "stopped":
+                    self._bench_abort = True
+        finally:
+            report["totals"] = totals(report["games"])
+            report["finished"] = time.time()
+            report["aborted"] = self._bench_abort
+            folder = ensure_private_dir(state_dir() / "bench")
+            path = folder / f"{report['id']}.json"
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(report, fh, indent=1)
+            self.bench = {"running": False, "last": report}
+
+    def bench_status(self) -> dict[str, Any]:
+        reports = []
+        for path in sorted((state_dir() / "bench").glob("*.json"), reverse=True)[:12]:
+            try:
+                r = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            reports.append(
+                {k: r.get(k) for k in ("id", "suite", "seed", "settings", "totals", "aborted")}
+            )
+        return {**self.bench, "suites": {k: list(v) for k, v in SUITES.items()}, "reports": reports}
+
+    def bench_report(self, bench_id: str) -> Optional[dict[str, Any]]:
+        if not control_api.RUN_ID.match(bench_id):
+            return None
+        path = state_dir() / "bench" / f"{bench_id}.json"
+        if not path.exists():
+            return None
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     def stop_run(self) -> None:
+        self._bench_abort = True
         ensure_private_dir(state_dir())
         stop_file().touch()
         # Release a waiting confirmation so the run can end promptly.
@@ -238,11 +390,18 @@ class ControlServer:
 
             addrs = listening_addresses(self.cfg.zxtouch_port)
             zxtouch = None if addrs is None else (bool(addrs) and not is_exposed(addrs))
+        effort = ""
+        try:
+            effort = load_config().effort
+        except ConfigError:
+            pass
         return {
             "started": self.started,
             "version": __version__,
             "provider": provider,
             "model": model,
+            "effort": effort or "default",
+            "bench_running": bool(self.bench.get("running")),
             "backend": backend,
             "config_error": error,
             "overlay": overlay_status(hud_status_file()),
@@ -286,11 +445,42 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
         def _json(self, code: int, obj: Any) -> None:
             self._send(code, json.dumps(obj).encode(), "application/json")
 
-        def _guard(self) -> Optional[str]:
-            # Loopback Host header (defeats DNS-rebinding) and the secret path prefix.
+        def _host_ok(self) -> bool:
+            # Loopback Host header defeats DNS rebinding from a web page.
             host = self.headers.get("Host", "").split(":")[0]
             if host and not _loopback(host):
                 self._send(421, b"bad host", "text/plain")
+                return False
+            return True
+
+        def _body(self) -> dict[str, Any]:
+            length = min(int(self.headers.get("Content-Length", "0") or "0"), 65536)
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                data = json.loads(raw or b"{}")
+            except ValueError:
+                return {}
+            return data if isinstance(data, dict) else {}
+
+        def _arena(self, method: str) -> bool:
+            """Arena pages and score reports; True if the request was an arena request."""
+            path = self.path.split("?", 1)[0]
+            if method == "GET" and path.startswith("/arena/"):
+                game = GAMES.get(path[len("/arena/") :])
+                if game is None or game.native:
+                    self._send(404, b"not found", "text/plain")
+                else:
+                    self._send(200, ARENA_HTML.encode(), "text/html; charset=utf-8")
+                return True
+            if method == "POST" and path == "/arena/result":
+                data = self._body()
+                ok = server.arena.record(str(data.get("s", "")), data)
+                self._json(200 if ok else 404, {"ok": ok})
+                return True
+            return False
+
+        def _guard(self) -> Optional[str]:
+            if not self._host_ok():
                 return None
             if not self.path.startswith(base + "/") and self.path != base:
                 self._send(404, b"not found", "text/plain")
@@ -298,9 +488,14 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
             return self.path[len(base) :] or "/"
 
         def do_GET(self) -> None:
+            if self.path.startswith("/arena/"):
+                if self._host_ok():
+                    self._arena("GET")
+                return
             route = self._guard()
             if route is None:
                 return
+            route = route.split("?", 1)[0]
             if route == "/":
                 html = CONTROL_HTML.replace("__BASE__", base)
                 self._send(200, html.encode(), "text/html; charset=utf-8")
@@ -309,20 +504,41 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
             elif route == "/api/info":
                 self._json(200, server.info())
             elif route == "/api/runs":
-                self._json(200, recent_runs(state_dir() / "runs"))
+                self._json(200, recent_runs(state_dir() / "runs", limit=20))
+            elif route.startswith("/api/runs/"):
+                details = control_api.run_details(route[len("/api/runs/") :])
+                self._json(200 if details else 404, details or {"error": "no such run"})
+            elif route == "/api/config":
+                self._json(200, control_api.config_view())
+            elif route == "/api/doctor":
+                self._json(200, control_api.doctor_view())
+            elif route == "/api/screen":
+                try:
+                    jpeg = control_api.screen_jpeg()
+                except Exception as exc:
+                    self._json(503, {"error": str(exc)})
+                    return
+                if jpeg is None:
+                    self._json(404, {"error": "screen preview needs the overlay"})
+                else:
+                    self._send(200, jpeg, "image/jpeg")
+            elif route == "/api/bench":
+                self._json(200, server.bench_status())
+            elif route.startswith("/api/bench/"):
+                report = server.bench_report(route[len("/api/bench/") :])
+                self._json(200 if report else 404, report or {"error": "no such report"})
             else:
                 self._send(404, b"not found", "text/plain")
 
         def do_POST(self) -> None:
+            if self.path.startswith("/arena/"):
+                if self._host_ok():
+                    self._arena("POST")
+                return
             route = self._guard()
             if route is None:
                 return
-            length = int(self.headers.get("Content-Length", "0") or "0")
-            raw = self.rfile.read(length) if length else b"{}"
-            try:
-                body = json.loads(raw or b"{}")
-            except ValueError:
-                body = {}
+            body = self._body()
             if route == "/api/run":
                 task = str(body.get("task", "")).strip()
                 if not task:
@@ -337,6 +553,29 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
             elif route == "/api/confirm":
                 ok = server.state.answer(str(body.get("id", "")), str(body.get("answer", "")))
                 self._json(200 if ok else 409, {"ok": ok})
+            elif route == "/api/config":
+                try:
+                    self._json(200, control_api.apply_config(body))
+                except (ConfigError, ValueError, TypeError) as exc:
+                    self._json(400, {"error": str(exc)})
+            elif route == "/api/test-provider":
+                self._json(200, control_api.test_provider())
+            elif route == "/api/runs/clear":
+                if server.state.running or server.bench.get("running"):
+                    self._json(409, {"error": "a run is in progress"})
+                else:
+                    self._json(200, {"removed": control_api.clear_history()})
+            elif route == "/api/bench":
+                try:
+                    seed = int(body.get("seed") or 1)
+                    started = server.start_bench(str(body.get("suite", "quick")), seed)
+                except (ConfigError, ValueError) as exc:
+                    self._json(400, {"error": str(exc)})
+                    return
+                if started:
+                    self._json(200, {"ok": True})
+                else:
+                    self._json(409, {"error": "a run is already in progress"})
             else:
                 self._send(404, b"not found", "text/plain")
 

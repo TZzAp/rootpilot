@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RootPilot Arena</title>
+<style>
+  /* High contrast, large text: built to be read by OCR and tapped by an agent. */
+  :root { --bg:#ffffff; --fg:#111111; --dim:#555; --accent:#1a5fd6; --ok:#17803d; --bad:#c62828; --tile:#eef1f5; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--fg);
+    font:20px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  body { padding:14px 14px 40px; max-width:520px; margin:0 auto; }
+  h1 { font-size:22px; margin:2px 0 4px; }
+  .sub { color:var(--dim); font-size:16px; margin-bottom:10px; }
+  .prompt { font-size:26px; font-weight:700; margin:10px 0 14px; min-height:34px; }
+  .status { font-size:18px; color:var(--dim); margin:8px 0; min-height:24px; }
+  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .grid button, .keys button { height:64px; font-size:22px; border:0; border-radius:12px;
+    background:var(--tile); color:var(--fg); font-weight:600; }
+  .keys { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:12px; }
+  .display { font-size:34px; font-weight:700; text-align:right; padding:10px 14px; border-radius:12px;
+    background:#f7f7f7; border:2px solid #ddd; min-height:62px; }
+  .field { width:100%; font-size:26px; padding:12px; border:2px solid #999; border-radius:12px; }
+  .wide { width:100%; height:62px; margin-top:12px; font-size:22px; border:0; border-radius:12px;
+    background:var(--accent); color:#fff; font-weight:700; }
+  .board { position:relative; height:430px; border:2px dashed #ccc; border-radius:12px; }
+  .board button { position:absolute; width:58px; height:58px; border-radius:50%; border:0;
+    font-size:24px; font-weight:700; background:var(--tile); }
+  .list button { display:block; width:100%; height:56px; margin:6px 0; border:0; border-radius:10px;
+    background:var(--tile); font-size:20px; text-align:left; padding:0 16px; }
+  .done { margin-top:16px; padding:18px; border-radius:14px; background:#e7f6ec; color:var(--ok);
+    font-size:28px; font-weight:800; text-align:center; }
+  .flash-bad { background:#fde7e7 !important; }
+  .hit { background:#d7f0de !important; }
+</style>
+</head>
+<body>
+<h1 id="title">RootPilot Arena</h1>
+<div class="sub" id="sub"></div>
+<div class="prompt" id="prompt"></div>
+<div id="area"></div>
+<div class="status" id="status"></div>
+<div id="done"></div>
+<script>
+"use strict";
+const q = new URLSearchParams(location.search);
+const GAME = location.pathname.split("/").pop();
+const SEED = parseInt(q.get("seed") || "1", 10);
+const SESSION = q.get("s") || "";
+const ROUNDS = Math.max(1, Math.min(8, parseInt(q.get("r") || "3", 10)));
+const START = Date.now();
+const $ = id => document.getElementById(id);
+
+// mulberry32: tiny seeded PRNG, identical on every device
+function rng(seed) { return function() { seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+  let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rand = rng(SEED * 7919 + GAME.length * 104729);
+const pick = arr => arr[Math.floor(rand() * arr.length)];
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) {
+  const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+// No word here matches the permission engine's irreversible vocabulary.
+const WORDS = ["apple","river","mango","tiger","pencil","cloud","violet","rocket","ocean","forest",
+  "silver","garden","planet","window","guitar","yellow","bridge","candle","dragon","lemon","marble",
+  "pepper","rabbit","shadow","thunder","valley","winter","zebra","anchor","banana","cactus",
+  "dolphin","engine","falcon","glacier","harbor","island","jungle","kettle","lantern","meadow",
+  "needle","oyster","parrot","quartz","ribbon","saddle","tomato","walnut","pillow"];
+
+const state = { correct: 0, total: ROUNDS, mistakes: 0, finished: false };
+function report() {
+  if (!SESSION) return;
+  fetch("/arena/result", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ s: SESSION, game: GAME, correct: state.correct, total: state.total,
+      mistakes: state.mistakes, ms: Date.now() - START, finished: state.finished }) }).catch(() => {});
+}
+function finish() {
+  state.finished = true;
+  $("area").innerHTML = ""; $("prompt").textContent = "";
+  $("status").textContent = `Mistakes: ${state.mistakes}`;
+  $("done").innerHTML = `<div class="done">DONE · score ${state.correct}/${state.total}</div>`;
+  report();
+}
+function miss(el) { state.mistakes++; if (el) { el.classList.add("flash-bad");
+  setTimeout(() => el.classList.remove("flash-bad"), 400); } report(); }
+function header(title, how) { $("title").textContent = "RootPilot Arena · " + title; $("sub").textContent = how; }
+
+const games = {
+  "word-hunt"() {
+    header("Word hunt", `Tap the word shown in large letters. ${ROUNDS} rounds.`);
+    let round = 0;
+    function next() {
+      if (round >= ROUNDS) return finish();
+      round++;
+      const words = shuffle(WORDS).slice(0, 12), target = pick(words);
+      $("prompt").textContent = `Tap: ${target.toUpperCase()}`;
+      $("status").textContent = `Round ${round} of ${ROUNDS}`;
+      $("area").innerHTML = `<div class="grid">${words.map(w => `<button>${w}</button>`).join("")}</div>`;
+      $("area").querySelectorAll("button").forEach(b => b.onclick = () => {
+        if (b.textContent === target) { state.correct++; report(); next(); } else miss(b);
+      });
+    }
+    next();
+  },
+  math() {
+    header("Mental math", `Work out the product, enter it on the keypad, then tap OK. ${ROUNDS} rounds.`);
+    let round = 0, entry = "";
+    function next() {
+      if (round >= ROUNDS) return finish();
+      round++; entry = "";
+      const a = 12 + Math.floor(rand() * 80), b = 3 + Math.floor(rand() * 7);
+      $("prompt").textContent = `What is ${a} × ${b} ?`;
+      $("status").textContent = `Round ${round} of ${ROUNDS}`;
+      const keys = ["1","2","3","4","5","6","7","8","9","Back","0","OK"];
+      $("area").innerHTML = `<div class="display" id="disp"></div><div class="keys">${keys.map(k => `<button>${k}</button>`).join("")}</div>`;
+      $("area").querySelectorAll(".keys button").forEach(btn => btn.onclick = () => {
+        const k = btn.textContent;
+        if (k === "Back") entry = entry.slice(0, -1);
+        else if (k === "OK") {
+          if (parseInt(entry || "-1", 10) === a * b) state.correct++; else state.mistakes++;
+          report(); return next();
+        } else if (entry.length < 5) entry += k;
+        $("disp").textContent = entry;
+      });
+    }
+    next();
+  },
+  order() {
+    const n = 6;
+    state.total = n;
+    header("Number order", `Tap the numbers 1 to ${n} in ascending order.`);
+    $("prompt").textContent = `Tap 1, then 2, … up to ${n}`;
+    const spots = [];
+    while (spots.length < n) {
+      const x = 8 + rand() * 270, y = 8 + rand() * 355;
+      if (spots.every(s => Math.hypot(s[0] - x, s[1] - y) > 78)) spots.push([x, y]);
+    }
+    $("area").innerHTML = `<div class="board">${spots.map((s, i) =>
+      `<button style="left:${s[0]|0}px;top:${s[1]|0}px">${i + 1}</button>`).join("")}</div>`;
+    let expect = 1;
+    $("status").textContent = `Next: ${expect}`;
+    $("area").querySelectorAll("button").forEach(b => b.onclick = () => {
+      if (b.classList.contains("hit")) return;
+      if (parseInt(b.textContent, 10) === expect) {
+        b.classList.add("hit"); b.textContent = "✓"; state.correct++; expect++; report();
+        if (expect > n) return finish();
+        $("status").textContent = `Next: ${expect}`;
+      } else miss(b);
+    });
+  },
+  scroll() {
+    header("Scroll and find", "Scroll down the list and tap the item shown below.");
+    const items = shuffle(WORDS).slice(0, 40), target = items[30 + Math.floor(rand() * 9)];
+    $("prompt").textContent = `Find and tap: ${target.toUpperCase()}`;
+    $("area").innerHTML = `<div class="list">${items.map((w, i) => `<button>${i + 1}. ${w}</button>`).join("")}</div>`;
+    $("area").querySelectorAll("button").forEach(b => b.onclick = () => {
+      if (b.textContent.endsWith(" " + target)) { state.correct = 1; finish(); window.scrollTo(0, 0); }
+      else miss(b);
+    });
+  },
+  type() {
+    header("Typing", `Type the word into the box exactly, then tap OK. ${ROUNDS} rounds.`);
+    let round = 0;
+    function next() {
+      if (round >= ROUNDS) return finish();
+      round++;
+      const word = pick(WORDS);
+      $("prompt").textContent = `Type: ${word}`;
+      $("status").textContent = `Round ${round} of ${ROUNDS}`;
+      $("area").innerHTML = `<input class="field" id="f" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="type here"><button class="wide" id="ok">OK</button>`;
+      $("ok").onclick = () => {
+        if ($("f").value.trim().toLowerCase() === word) state.correct++; else state.mistakes++;
+        report(); next();
+      };
+    }
+    next();
+  },
+};
+
+if (games[GAME]) { games[GAME](); report(); }
+else { $("title").textContent = "Unknown game"; }
+</script>
+</body>
+</html>
