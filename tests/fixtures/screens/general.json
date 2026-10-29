@@ -1,0 +1,102 @@
+{
+ "name": "general",
+ "screen_size": [
+  375,
+  812
+ ],
+ "foreground_app": "com.apple.Preferences",
+ "tree": {
+  "role": "Window",
+  "frame": [
+   0,
+   0,
+   375,
+   812
+  ],
+  "children": [
+   {
+    "role": "Button",
+    "label": "Settings",
+    "frame": [
+     0,
+     44,
+     100,
+     44
+    ]
+   },
+   {
+    "role": "NavigationBar",
+    "label": "General",
+    "frame": [
+     0,
+     44,
+     375,
+     52
+    ]
+   },
+   {
+    "role": "Table",
+    "frame": [
+     0,
+     96,
+     375,
+     716
+    ],
+    "children": [
+     {
+      "role": "Cell",
+      "label": "About",
+      "frame": [
+       0,
+       160,
+       375,
+       44
+      ]
+     },
+     {
+      "role": "Cell",
+      "label": "Software Update",
+      "frame": [
+       0,
+       204,
+       375,
+       44
+      ]
+     },
+     {
+      "role": "Cell",
+      "label": "Transfer or Reset iPhone",
+      "frame": [
+       0,
+       600,
+       375,
+       44
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "transitions": [
+  {
+   "action": "tap",
+   "label": "About",
+   "goto": "about"
+  },
+  {
+   "action": "tap",
+   "label": "Settings",
+   "goto": "settings"
+  },
+  {
+   "action": "press_button",
+   "button": "home",
+   "goto": "start"
+  },
+  {
+   "action": "swipe",
+   "direction": "up",
+   "goto": "start"
+  }
+ ]
+}

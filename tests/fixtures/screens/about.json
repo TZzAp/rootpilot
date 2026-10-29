@@ -1,0 +1,111 @@
+{
+ "name": "about",
+ "screen_size": [
+  375,
+  812
+ ],
+ "foreground_app": "com.apple.Preferences",
+ "tree": {
+  "role": "Window",
+  "frame": [
+   0,
+   0,
+   375,
+   812
+  ],
+  "children": [
+   {
+    "role": "Button",
+    "label": "General",
+    "frame": [
+     0,
+     44,
+     100,
+     44
+    ]
+   },
+   {
+    "role": "NavigationBar",
+    "label": "About",
+    "frame": [
+     0,
+     44,
+     375,
+     52
+    ]
+   },
+   {
+    "role": "Table",
+    "frame": [
+     0,
+     96,
+     375,
+     716
+    ],
+    "children": [
+     {
+      "role": "Cell",
+      "label": "Name",
+      "frame": [
+       0,
+       160,
+       375,
+       44
+      ],
+      "value": "iPhone"
+     },
+     {
+      "role": "Cell",
+      "label": "iOS Version",
+      "frame": [
+       0,
+       204,
+       375,
+       44
+      ],
+      "value": "16.7.11"
+     },
+     {
+      "role": "Cell",
+      "label": "Model Name",
+      "frame": [
+       0,
+       248,
+       375,
+       44
+      ],
+      "value": "iPhone X"
+     },
+     {
+      "role": "Cell",
+      "label": "Model Number",
+      "frame": [
+       0,
+       292,
+       375,
+       44
+      ],
+      "value": "MQA52LL/A"
+     }
+    ]
+   }
+  ]
+ },
+ "transitions": [
+  {
+   "action": "tap",
+   "label": "General",
+   "goto": "general"
+  },
+  {
+   "action": "press_button",
+   "button": "home",
+   "goto": "start"
+  },
+  {
+   "action": "swipe",
+   "direction": "up",
+   "goto": "start"
+  }
+ ]
+}

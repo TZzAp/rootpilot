@@ -1,0 +1,76 @@
+{
+ "name": "start",
+ "screen_size": [
+  375,
+  812
+ ],
+ "foreground_app": "com.apple.springboard",
+ "tree": {
+  "role": "Window",
+  "frame": [
+   0,
+   0,
+   375,
+   812
+  ],
+  "children": [
+   {
+    "role": "Icon",
+    "label": "Settings",
+    "frame": [
+     27,
+     520,
+     60,
+     60
+    ]
+   },
+   {
+    "role": "Icon",
+    "label": "Messages",
+    "frame": [
+     115,
+     520,
+     60,
+     60
+    ]
+   },
+   {
+    "role": "Icon",
+    "label": "Safari",
+    "frame": [
+     203,
+     520,
+     60,
+     60
+    ]
+   }
+  ]
+ },
+ "transitions": [
+  {
+   "action": "launch_app",
+   "bundle_id": "com.apple.Preferences",
+   "goto": "settings"
+  },
+  {
+   "action": "tap",
+   "label": "Settings",
+   "goto": "settings"
+  },
+  {
+   "action": "launch_app",
+   "bundle_id": "com.apple.MobileSMS",
+   "goto": "messages"
+  },
+  {
+   "action": "tap",
+   "label": "Messages",
+   "goto": "messages"
+  },
+  {
+   "action": "launch_app",
+   "bundle_id": "com.apple.mobilesafari",
+   "goto": "login"
+  }
+ ]
+}

@@ -1,0 +1,54 @@
+{
+ "name": "login",
+ "screen_size": [
+  375,
+  812
+ ],
+ "foreground_app": "com.apple.mobilesafari",
+ "tree": {
+  "role": "Window",
+  "frame": [
+   0,
+   0,
+   375,
+   812
+  ],
+  "children": [
+   {
+    "role": "TextField",
+    "label": "Email",
+    "frame": [
+     20,
+     300,
+     335,
+     44
+    ]
+   },
+   {
+    "role": "TextField",
+    "label": "Password",
+    "frame": [
+     20,
+     360,
+     335,
+     44
+    ],
+    "secure": true,
+    "focused": true,
+    "value": "secret-pw"
+   }
+  ]
+ },
+ "transitions": [
+  {
+   "action": "press_button",
+   "button": "home",
+   "goto": "start"
+  },
+  {
+   "action": "swipe",
+   "direction": "up",
+   "goto": "start"
+  }
+ ]
+}

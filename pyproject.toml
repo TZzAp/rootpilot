@@ -36,6 +36,9 @@ ignore = [
     "S603",   # subprocess without shell: shell tool is permission-gated
     "UP007",  # X | Y at runtime is not available on 3.9
     "UP045",
+    "RUF001",  # en dashes and ellipses in prose are intentional
+    "RUF002",
+    "RUF003",
 ]
 
 [tool.ruff.lint.per-file-ignores]

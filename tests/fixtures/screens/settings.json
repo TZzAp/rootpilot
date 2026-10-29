@@ -1,0 +1,99 @@
+{
+ "name": "settings",
+ "screen_size": [
+  375,
+  812
+ ],
+ "foreground_app": "com.apple.Preferences",
+ "tree": {
+  "role": "Window",
+  "frame": [
+   0,
+   0,
+   375,
+   812
+  ],
+  "children": [
+   {
+    "role": "NavigationBar",
+    "label": "Settings",
+    "frame": [
+     0,
+     44,
+     375,
+     52
+    ]
+   },
+   {
+    "role": "Table",
+    "frame": [
+     0,
+     96,
+     375,
+     716
+    ],
+    "children": [
+     {
+      "role": "Cell",
+      "label": "Wi-Fi",
+      "frame": [
+       0,
+       200,
+       375,
+       44
+      ],
+      "value": "Home"
+     },
+     {
+      "role": "Cell",
+      "label": "Bluetooth",
+      "frame": [
+       0,
+       244,
+       375,
+       44
+      ],
+      "value": "On"
+     },
+     {
+      "role": "Cell",
+      "label": "General",
+      "frame": [
+       0,
+       384,
+       375,
+       44
+      ]
+     },
+     {
+      "role": "Cell",
+      "label": "Privacy & Security",
+      "frame": [
+       0,
+       428,
+       375,
+       44
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "transitions": [
+  {
+   "action": "tap",
+   "label": "General",
+   "goto": "general"
+  },
+  {
+   "action": "press_button",
+   "button": "home",
+   "goto": "start"
+  },
+  {
+   "action": "swipe",
+   "direction": "up",
+   "goto": "start"
+  }
+ ]
+}
