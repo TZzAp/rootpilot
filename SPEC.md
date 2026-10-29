@@ -273,7 +273,8 @@ rootpilot/
   `[project.optional-dependencies] dev`. Because of 3.9: every module starts with
   `from __future__ import annotations`; no `match`; no `X | Y` unions outside annotations
   (use `Optional`/`Union` in `isinstance`, `cast` and type aliases); no `tomllib`;
-  ruff `target-version = "py39"`, mypy `python_version = "3.9"`; CI tests 3.9 and 3.12.
+  ruff `target-version = "py39"`, mypy `python_version = "3.10"` (mypy >= 2 cannot target 3.9);
+  CI runs the test suite on 3.9 and 3.12.
 - `mypy --strict` clean, `ruff check` and `ruff format --check` clean, tests pass without network.
 - Tests never hit the network or a device unless marked `device` (skipped in CI).
 - Small commits with Conventional Commit messages (`feat:`, `fix:`, `test:`, `docs:`, `chore:`,

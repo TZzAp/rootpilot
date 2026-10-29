@@ -10,3 +10,4 @@ dist/
 config.json
 *.local.json
 runs/
+.venv39/
