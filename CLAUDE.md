@@ -11,7 +11,7 @@ mypy --strict agent tests
 pytest -m "not device"          # what CI runs; no network, no device
 pytest -m device                # only with a reachable device and ROOTPILOT_DEVICE=1
 rootpilot doctor --backend mock
-rootpilot run "open Settings and tell me the iOS version" --backend mock --fixture tests/fixtures/screens
+rootpilot run "open Settings and tell me the iOS version" --backend mock   # uses agent/demo/screens
 ```
 
 ## Hard rules
