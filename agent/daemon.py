@@ -10,13 +10,17 @@ from __future__ import annotations
 import plistlib
 import sys
 from pathlib import Path
+from typing import Optional
 
 from agent.paths import jbroot, state_dir
 
 LABEL = "com.rootpilot.serve"
 
 
-def daemon_plist(home: str = "/var/mobile") -> bytes:
+def daemon_plist(home: Optional[str] = None) -> bytes:
+    # The daemon must see the same home as the shell that ran install-icon and setup (on
+    # rootless that is /var/jb/var/mobile), or it would look for a different token and config.
+    home = home or str(Path.home())
     root = jbroot()
     checkout = Path(__file__).resolve().parent.parent
     bins = [str(root / p) for p in ("usr/bin", "bin", "usr/sbin", "sbin")]

@@ -45,14 +45,25 @@ def stop_file(env: Optional[Mapping[str, str]] = None) -> Path:
     return state_dir(env) / "STOP"
 
 
+def hud_dir(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Where RootPilot and the SpringBoard overlay exchange state.
+
+    A fixed path rather than one under $HOME: on rootless jailbreaks mobile's shell home is
+    /var/jb/var/mobile while SpringBoard's is /var/mobile, and both sides must agree. Must
+    match kHUDDir in hud/RootPilotHUD.m.
+    """
+    env = os.environ if env is None else env
+    return Path(env.get("ROOTPILOT_HUD_DIR", "/var/mobile/Library/RootPilot"))
+
+
 def hud_file(env: Optional[Mapping[str, str]] = None) -> Path:
     """State the SpringBoard HUD overlay reads: whether the agent is active and its step."""
-    return state_dir(env) / "hud.json"
+    return hud_dir(env) / "hud.json"
 
 
 def hud_status_file(env: Optional[Mapping[str, str]] = None) -> Path:
     """Written by the overlay itself (hud/RootPilotHUD.m) when it loads, shows and hides."""
-    return state_dir(env) / "hud.status.json"
+    return hud_dir(env) / "hud.status.json"
 
 
 def serve_token_file(env: Optional[Mapping[str, str]] = None) -> Path:

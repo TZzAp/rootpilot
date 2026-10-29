@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 
-from agent.paths import jbroot
+from agent.paths import ensure_private_dir, jbroot
 
 NOTIFY_PREFIX = "com.rootpilot.hud"
 HUD_DYLIB = "Library/MobileSubstrate/DynamicLibraries/RootPilotHUD.dylib"
@@ -77,7 +77,7 @@ class DeviceIndicator:
             "point": [round(point[0], 1), round(point[1], 1)] if point else None,
         }
         try:
-            self._hud.parent.mkdir(parents=True, exist_ok=True)
+            ensure_private_dir(self._hud.parent)
             tmp = self._hud.with_name(self._hud.name + ".tmp")
             tmp.write_text(json.dumps(payload), encoding="utf-8")
             os.replace(tmp, self._hud)

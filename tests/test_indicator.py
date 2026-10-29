@@ -139,7 +139,7 @@ def test_daemon_plist_follows_the_jailbreak_root(monkeypatch: pytest.MonkeyPatch
     from agent import daemon
 
     monkeypatch.setattr(daemon, "jbroot", lambda: Path("/var/jb"))
-    plist = plistlib.loads(daemon.daemon_plist())
+    plist = plistlib.loads(daemon.daemon_plist("/var/mobile"))
     assert plist["ProgramArguments"] == [sys.executable, "-m", "agent", "serve"]
     assert plist["UserName"] == "mobile" and plist["KeepAlive"] is True
     assert plist["EnvironmentVariables"]["PATH"].startswith("/var/jb/usr/bin:")
@@ -147,3 +147,34 @@ def test_daemon_plist_follows_the_jailbreak_root(monkeypatch: pytest.MonkeyPatch
     assert daemon.install_path() == Path("/var/jb/Library/LaunchDaemons/com.rootpilot.serve.plist")
     monkeypatch.setattr(daemon, "jbroot", lambda: Path("/"))
     assert daemon.install_path() == Path("/Library/LaunchDaemons/com.rootpilot.serve.plist")
+
+
+def test_capture_request_is_private_and_waits_for_the_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+    import stat
+
+    from agent import capture
+    from agent.errors import RootPilotError
+
+    monkeypatch.setenv("ROOTPILOT_HUD_DIR", str(tmp_path / "rp"))
+    monkeypatch.setattr(capture, "hud_installed", lambda: False)
+    with pytest.raises(RootPilotError, match="overlay"):
+        capture.request_capture()
+    monkeypatch.setattr(capture, "hud_installed", lambda: True)
+    posted: list[str] = []
+    monkeypatch.setattr(capture, "_notify_poster", lambda: posted.append)
+
+    def overlay_finishes(seconds: float) -> None:  # stands in for SpringBoard
+        req = tmp_path / "rp" / "capture.request"
+        assert stat.S_IMODE(os.stat(req).st_mode) == 0o600
+        assert json.loads(req.read_text())["frames"] == 3
+        (tmp_path / "rp" / "capture.status.json").write_text(
+            json.dumps({"dir": str(tmp_path / "rp" / "captures" / "demo"), "finished": True})
+        )
+
+    folder = capture.request_capture(frames=3, name="demo", sleep=overlay_finishes)
+    assert folder == tmp_path / "rp" / "captures" / "demo"
+    assert posted == ["com.rootpilot.hud.capture"]
+    assert stat.S_IMODE(os.stat(tmp_path / "rp").st_mode) == 0o700

@@ -8,13 +8,14 @@ It is deliberately passive:
 
 - **No hooks.** It patches no iOS methods. It only listens for the Darwin notifications the
   RootPilot loop posts (`com.rootpilot.hud.active` / `.update` / `.idle`) and reads
-  `~/.local/state/rootpilot/hud.json` for the touch point.
+  `/var/mobile/Library/RootPilot/hud.json` for the touch point (a fixed path: on rootless
+  jailbreaks the shell home and SpringBoard's home differ).
 - **Never takes touches.** Its window returns `nil` from `hitTest:`, so taps — yours and the
   agent's — go straight to the app underneath.
 - **Draws no text.** RootPilot reads the screen with OCR; text in the overlay would end up in
   its observations. The current step is on the control page instead. With the overlay
   installed, RootPilot also stops showing its start/stop toast for the same reason.
-- **Reports its state** to `~/.local/state/rootpilot/hud.status.json` (loaded, visible, PID),
+- **Reports its state** to `/var/mobile/Library/RootPilot/hud.status.json` (loaded, visible, PID),
   which `rootpilot doctor` and the control page read.
 
 ## Build (Linux)

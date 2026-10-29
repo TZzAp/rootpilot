@@ -5,18 +5,28 @@
 //
 // Deliberately minimal and passive:
 //  - no method hooks: it only listens for the Darwin notifications the RootPilot loop posts
-//    (com.rootpilot.hud.active / .update / .idle) and reads ~/.local/state/rootpilot/hud.json;
+//    (com.rootpilot.hud.active / .update / .idle) and reads /var/mobile/Library/RootPilot/hud.json;
 //  - the window never takes touches (hitTest returns nil), so it can't block the agent or you;
 //  - no text is drawn, because RootPilot reads the screen with OCR and text would end up in its
 //    observations. The current step is shown on the control page instead.
+//
+// It can also capture screen frames (for docs and debugging): only when RootPilot has written
+// capture.request into its private 0700 folder, so another app posting the notification alone
+// can't trigger it.
 
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
+#include <dlfcn.h>
 #include <notify.h>
 #include <unistd.h>
 
-static NSString *const kHUDPath = @"/var/mobile/.local/state/rootpilot/hud.json";
-static NSString *const kStatusPath = @"/var/mobile/.local/state/rootpilot/hud.status.json";
+// Fixed, $HOME-independent location shared with RootPilot (agent/paths.py hud_dir): on
+// rootless jailbreaks mobile's shell home is /var/jb/var/mobile, SpringBoard's is /var/mobile.
+static NSString *const kHUDPath = @"/var/mobile/Library/RootPilot/hud.json";
+static NSString *const kStatusPath = @"/var/mobile/Library/RootPilot/hud.status.json";
+static NSString *const kCaptureRequest = @"/var/mobile/Library/RootPilot/capture.request";
+static NSString *const kCaptureStatus = @"/var/mobile/Library/RootPilot/capture.status.json";
+static NSString *const kCaptureDir = @"/var/mobile/Library/RootPilot/captures";
 
 // Self-report for `rootpilot doctor` and debugging: proves the overlay loaded and drew.
 static void RPWriteStatus(NSDictionary *extra) {
@@ -27,6 +37,10 @@ static void RPWriteStatus(NSDictionary *extra) {
     } mutableCopy];
     [status addEntriesFromDictionary:extra];
     NSData *data = [NSJSONSerialization dataWithJSONObject:status options:0 error:nil];
+    [NSFileManager.defaultManager createDirectoryAtPath:kStatusPath.stringByDeletingLastPathComponent
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:nil];
     [data writeToFile:kStatusPath atomically:YES];
 }
 
@@ -241,6 +255,119 @@ static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
 
 @end
 
+// ---- screen capture -------------------------------------------------------------------
+
+// Private UIKit; returns a +1 image of the whole display (all windows, including ours).
+typedef void *(*RPScreenFn)(void);
+
+static RPScreenFn RPScreenFunction(void) {
+    static RPScreenFn fn;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ fn = (RPScreenFn)dlsym(RTLD_DEFAULT, "_UICreateScreenUIImage"); });
+    return fn;
+}
+
+@interface RPCapture : NSObject
+@property(nonatomic, strong) NSTimer *timer;
+@property(nonatomic, strong) dispatch_queue_t queue;
+@property(nonatomic, copy) NSString *dir;
+@property(nonatomic, assign) NSInteger total, taken, written;
+@property(nonatomic, assign) CGFloat width;
++ (instancetype)shared;
+@end
+
+@implementation RPCapture
+
++ (instancetype)shared {
+    static RPCapture *capture;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      capture = [RPCapture new];
+      capture.queue = dispatch_queue_create("com.rootpilot.hud.capture", DISPATCH_QUEUE_SERIAL);
+    });
+    return capture;
+}
+
+- (void)writeStatus:(BOOL)finished error:(NSString *)error {
+    NSDictionary *s = @{
+        @"dir" : self.dir ?: @"",
+        @"total" : @(self.total),
+        @"written" : @(self.written),
+        @"finished" : @(finished),
+        @"error" : error ?: @""
+    };
+    [[NSJSONSerialization dataWithJSONObject:s options:0 error:nil] writeToFile:kCaptureStatus
+                                                                     atomically:YES];
+}
+
+- (void)startFromRequest {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSData *data = [NSData dataWithContentsOfFile:kCaptureRequest];
+    [fm removeItemAtPath:kCaptureRequest error:nil];  // one request, one capture
+    if (!data || self.timer) return;
+    NSDictionary *req = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![req isKindOfClass:NSDictionary.class]) return;
+    if (!RPScreenFunction()) {
+        [self writeStatus:YES error:@"_UICreateScreenUIImage not available"];
+        return;
+    }
+    NSString *name = [req[@"name"] description] ?: @"capture";
+    NSCharacterSet *bad =
+        [[NSCharacterSet characterSetWithCharactersInString:
+                             @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"]
+            invertedSet];
+    name = [[name componentsSeparatedByCharactersInSet:bad] componentsJoinedByString:@""];
+    if (name.length == 0) name = @"capture";
+    self.total = MAX(1, MIN(600, [req[@"frames"] integerValue]));
+    double interval = MAX(0.1, MIN(5.0, [req[@"interval"] doubleValue] ?: 0.25));
+    self.width = MAX(160, MIN(1242, [req[@"width"] doubleValue] ?: 540));
+    self.taken = self.written = 0;
+    self.dir = [kCaptureDir stringByAppendingPathComponent:name];
+    [fm removeItemAtPath:self.dir error:nil];
+    [fm createDirectoryAtPath:self.dir withIntermediateDirectories:YES attributes:nil error:nil];
+    [self writeStatus:NO error:nil];
+    [self tick];
+    self.timer = [NSTimer scheduledTimerWithTimeInterval:interval
+                                                  target:self
+                                                selector:@selector(tick)
+                                                userInfo:nil
+                                                 repeats:YES];
+}
+
+- (void)tick {
+    if (self.taken >= self.total) {
+        [self.timer invalidate];
+        self.timer = nil;
+        return;
+    }
+    // Take ownership of the +1 image so ARC frees it (a leak here would be ~10 MB per frame).
+    UIImage *shot = (__bridge_transfer UIImage *)RPScreenFunction()();
+    NSInteger index = ++self.taken;
+    if (!shot) return;
+    CGFloat width = self.width;
+    NSString *path = [self.dir stringByAppendingPathComponent:
+                                   [NSString stringWithFormat:@"%04ld.jpg", (long)index]];
+    dispatch_async(self.queue, ^{
+      CGSize src = CGSizeMake(shot.size.width * shot.scale, shot.size.height * shot.scale);
+      CGFloat factor = MIN(1.0, width / src.width);
+      CGSize size = CGSizeMake(round(src.width * factor), round(src.height * factor));
+      UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+      format.scale = 1;
+      UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size
+                                                                                 format:format];
+      UIImage *small = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        [shot drawInRect:CGRectMake(0, 0, size.width, size.height)];
+      }];
+      [UIImageJPEGRepresentation(small, 0.85) writeToFile:path atomically:YES];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        self.written += 1;
+        [self writeStatus:(self.written >= self.total) error:nil];
+      });
+    });
+}
+
+@end
+
 static void RPRegister(void) {
     int token;
     dispatch_queue_t main = dispatch_get_main_queue();
@@ -252,6 +379,9 @@ static void RPRegister(void) {
     });
     notify_register_dispatch("com.rootpilot.hud.idle", &token, main, ^(int t) {
       [[RPHUD shared] hide];
+    });
+    notify_register_dispatch("com.rootpilot.hud.capture", &token, main, ^(int t) {
+      [[RPCapture shared] startFromRequest];
     });
 }
 

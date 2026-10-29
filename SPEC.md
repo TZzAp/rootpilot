@@ -279,7 +279,7 @@ backoff on 429/5xx, and `Retry-After` support.
 - `rootpilot install-icon`: a full-screen web clip (`/var/mobile/Library/WebClips/<hex>.webclip`)
   with the RootPilot icon, opening the control page. `--remove` deletes it.
 - Indicator (`agent/indicator.py`): on run start/step/end the loop writes `$STATE_DIR/hud.json`
-  (active, task, step, touch point) and posts `com.rootpilot.hud.active|update|idle`. The
+  (active, task, step, touch point; fixed path `/var/mobile/Library/RootPilot/`) and posts `com.rootpilot.hud.active|update|idle`. The
   SpringBoard overlay `hud/RootPilotHUD` draws an edge glow and touch ripples from them. It
   hooks nothing, ignores all touches and draws no text (text would leak into OCR observations).
   Without the overlay, a ZXTouch toast announces start and end instead.

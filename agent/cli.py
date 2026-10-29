@@ -364,6 +364,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_icon.add_argument("--port", type=int, help="port the control server uses (default 8366)")
     p_icon.add_argument("--remove", action="store_true", help="remove the icon")
+    p_cap = sub.add_parser(
+        "capture", parents=[common], help="save screen frames via the edge-glow overlay"
+    )
+    p_cap.add_argument("--frames", type=int, default=1)
+    p_cap.add_argument("--interval", type=float, default=0.25, help="seconds between frames")
+    p_cap.add_argument("--name", default="capture", help="folder name under captures/")
+    p_cap.add_argument("--width", type=int, default=540, help="output width in pixels")
     sub.add_parser(
         "daemon-plist",
         parents=[common],
@@ -420,6 +427,12 @@ def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
             return run_server(cfg, out)
         if args.command == "install-icon":
             return install_icon(args, out)
+        if args.command == "capture":
+            from agent.capture import request_capture
+
+            folder = request_capture(args.frames, args.interval, args.name, args.width)
+            out.write(f"{folder}\n")
+            return 0
         if args.command == "daemon-plist":
             from agent.daemon import daemon_plist, install_path
 
