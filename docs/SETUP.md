@@ -122,24 +122,29 @@ export PYTHONPATH="$HOME/rootpilot"
 
 ## 5. Configure a provider
 
-Create `~/.config/rootpilot/config.json` **with mode 0600** (RootPilot refuses to read API keys
-from a file other users can read):
+Run the setup command and pick a provider (Anthropic, DeepSeek, OpenAI or a local
+OpenAI-compatible server). It reads the API key without echoing it and writes
+`~/.config/rootpilot/config.json` with mode `0600`:
 
 ```sh
-mkdir -p ~/.config/rootpilot
-umask 077
-cat > ~/.config/rootpilot/config.json <<'EOF'
-{
-  "provider": "anthropic",
-  "anthropic_api_key": "sk-ant-...",
-  "backend": "zxtouch"
-}
-EOF
-chmod 600 ~/.config/rootpilot/config.json
+rootpilot setup
 ```
 
-Or use environment variables instead of the file (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). All
-options are in [`CONFIG.md`](CONFIG.md).
+```text
+Which model provider should RootPilot use?
+  1. Anthropic (Claude)  (current)
+  2. DeepSeek
+  3. OpenAI
+  4. OpenAI-compatible server (local model)
+Choose 1-4 [1]: 2
+DeepSeek API key, input hidden:
+Model [deepseek-flash]:
+Saved /var/mobile/.config/rootpilot/config.json (mode 0600): provider deepseek, model deepseek-flash, key stored.
+```
+
+Or use environment variables instead (`ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`,
+`OPENAI_API_KEY`). All options are in [`CONFIG.md`](CONFIG.md). RootPilot refuses to read API
+keys from a config file other users can read.
 
 ## 6. Run `doctor`
 

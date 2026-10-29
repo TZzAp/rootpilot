@@ -12,7 +12,8 @@ before doing anything sensitive or irreversible.
 
 ## Features
 - Agent loop with step, token and time budgets and post-action verification
-- Providers: Anthropic and OpenAI (your API key), any OpenAI-compatible endpoint (local models)
+- Providers: Anthropic, DeepSeek and OpenAI (your API key), any OpenAI-compatible endpoint
+  (local models); `rootpilot setup` picks one and stores the key
 - Backends: a deterministic mock device for tests and ZXTouch (loopback only); a native helper
   daemon is planned (M2)
 - Permission engine: allow / ask / deny tiers, sensitive-app list, confirmation for irreversible

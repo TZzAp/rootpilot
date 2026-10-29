@@ -232,6 +232,10 @@ backoff on 429/5xx, and `Retry-After` support.
   (`clear_tool_uses_20250919`). A `refusal` stop reason ends the run with the reason shown.
 - `openai.py`: Chat Completions API with tools + image input, key from `OPENAI_API_KEY` or
   config; model must be set in config (no guessed default).
+- `deepseek.py`: DeepSeek's OpenAI-compatible API (`https://api.deepseek.com`), key from
+  `DEEPSEEK_API_KEY` or config, default model `deepseek-flash`. Thinking is on by default and,
+  with tools, `reasoning_content` must be replayed on every later request (else 400), so it is
+  kept in `Message.raw`. Text-only: no screenshots are taken for it.
 - `compat.py`: subclass of the OpenAI provider with a configurable `base_url` and optional key,
   for OpenAI-compatible servers (llama.cpp, vLLM, Ollama, LM Studio).
 - `chatgpt.py`: **stub until M4.** Will implement OpenAI's official "Sign in with ChatGPT"

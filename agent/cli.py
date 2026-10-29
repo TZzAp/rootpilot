@@ -79,6 +79,7 @@ def doctor(args: argparse.Namespace, out: TextIO) -> int:
     key = {
         "anthropic": cfg.anthropic_api_key,
         "openai": cfg.openai_api_key,
+        "deepseek": cfg.deepseek_api_key,
         "compat": cfg.compat_api_key or "(not needed)",
     }.get(cfg.provider, "")
     try:
@@ -280,12 +281,20 @@ def build_parser() -> argparse.ArgumentParser:
         "apps or irreversible actions)",
     )
     sub.add_parser("repl", parents=[common], help="interactive session (the default)")
+    p_setup = sub.add_parser(
+        "setup",
+        parents=[common],
+        help="choose a provider (Anthropic, DeepSeek, …) and save its key",
+    )
+    p_setup.add_argument(
+        "--key-stdin", action="store_true", help="read the API key from stdin (for scripts)"
+    )
     return parser
 
 
 def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
     args = build_parser().parse_args(argv)
-    for name in ("yes_to", "max_steps", "save_screens"):
+    for name in ("yes_to", "max_steps", "save_screens", "key_stdin"):
         if not hasattr(args, name):
             setattr(args, name, None)
     try:
@@ -293,6 +302,10 @@ def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
             return doctor(args, out)
         if args.command == "run":
             return run(args, out)
+        if args.command == "setup":
+            from agent.setup_wizard import setup
+
+            return setup(args, out)
         return repl(args, out)
     except (RootPilotError, NotImplementedError) as exc:
         out.write(f"error: {Redactor().text(str(exc))}\n")

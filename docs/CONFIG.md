@@ -1,5 +1,9 @@
 # Configuration
 
+The easiest way to create the file is `rootpilot setup`, which asks which provider to use,
+reads the API key without echoing it, and writes the file with mode `0600`. For scripts:
+`echo "$KEY" | rootpilot setup --provider deepseek --key-stdin`.
+
 Settings come from, in increasing priority: built-in defaults → `~/.config/rootpilot/config.json`
 (or `$XDG_CONFIG_HOME/rootpilot/config.json`, or `--config PATH`) → environment variables → CLI
 flags. The file is JSON; unknown keys are an error. A file containing API keys must be mode
@@ -7,13 +11,15 @@ flags. The file is JSON; unknown keys are an error. A file containing API keys m
 
 | Key | Env var | Default | Meaning |
 |---|---|---|---|
-| `provider` | `ROOTPILOT_PROVIDER` | `anthropic` | `anthropic`, `openai`, `compat` (`chatgpt` arrives in M4) |
-| `model` | `ROOTPILOT_MODEL` | `claude-opus-5-5` for anthropic | Required for `openai` and `compat` |
+| `provider` | `ROOTPILOT_PROVIDER` | `anthropic` | `anthropic`, `deepseek`, `openai`, `compat` (`chatgpt` arrives in M4) |
+| `model` | `ROOTPILOT_MODEL` | `claude-opus-5-5` (anthropic), `deepseek-flash` (deepseek) | Required for `openai` and `compat` |
 | `backend` | `ROOTPILOT_BACKEND` | `zxtouch` | `zxtouch` or `mock` |
 | `anthropic_api_key` | `ANTHROPIC_API_KEY` | | |
 | `openai_api_key` | `OPENAI_API_KEY` | | |
+| `deepseek_api_key` | `DEEPSEEK_API_KEY` | | from platform.deepseek.com |
 | `compat_base_url` | `ROOTPILOT_COMPAT_BASE_URL` | | e.g. `http://127.0.0.1:8080/v1` |
 | `compat_api_key` | `ROOTPILOT_COMPAT_API_KEY` | | optional |
+| `compat_vision` | | `true` | set `false` for text-only local models |
 | `zxtouch_host` | `ROOTPILOT_ZXTOUCH_HOST` | `127.0.0.1` | loopback only |
 | `zxtouch_port` | `ROOTPILOT_ZXTOUCH_PORT` | `6000` | |
 | `max_steps` | | `40` | model calls per run (`--max-steps`) |
@@ -27,6 +33,10 @@ flags. The file is JSON; unknown keys are an error. A file containing API keys m
 | `irreversible_words` | | `[]` | extra labels that need confirmation when tapped |
 | `shell_allow_reboot` | | `false` | let `reboot`/`ldrestart` reach the confirmation prompt |
 | `category_defaults` | | `{}` | e.g. `{"clipboard_read": "allow", "act": "ask"}`; values `allow`/`ask`/`deny` |
+
+Providers without image input (DeepSeek, or `compat` with `compat_vision: false`) get the UI
+tree text only; RootPilot doesn't take screenshots for them. On ZXTouch the tree comes from text
+recognition, so this costs nothing there.
 
 Categories: `observe`, `act`, `app`, `clipboard_read`, `shell`, `meta`. Escalations (sensitive
 apps, irreversible taps, non-http URLs, password fields, the shell deny-list) apply on top of
