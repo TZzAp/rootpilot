@@ -48,6 +48,7 @@ END OF THE ROUND
 - The round is over when the tool says "No piece fits anywhere", or a result / game-over screen appears. Then do not tap anything: no Revive, no Continue, no ads, no Play again, no new round.
 - observe once to read the final score, then call done with: the final score, how many pieces you placed, how many times you cleared lines, and why the round ended.
 - If drag_shape says a piece "did not drop" twice in a row, observe: a popup may cover the game. Close it with its X as above (never through an ad).
+- Nobody is watching: never use shell or ask_user. If the board looks wrong, wait 2 seconds and read_grid again.
 ```
 
 ## How the numbers were measured
@@ -60,7 +61,7 @@ From screen captures through the overlay (one pixel per point) on an iPhone X:
 | Piece tray | y 570–680; pieces centred near x 78 / 187 / 296, y 620; one block ≈ 18.4 pt |
 | Dragging | the piece jumps 93.5 pt above the finger and moves **1.5×** as far as the finger (measured at five finger positions; `drag_shape` works back from these) |
 | Cancel a drag | release with the piece outside the board (below the tray): it goes back, no move |
-| Cell classes (vividness) | empty 123, blocks 279–378, background 222 |
+| Cell colours | empty cells are the darkest colour on the board and darker than the screen around it; blocks are brighter. Normal theme: empty (34,40,74), background (65,82,144). "New best" dark theme: empty (47,46,51), background (77,76,81), dark-green blocks (54,88,71) |
 
 `read_grid` and `drag_shape` work for other block puzzles too; measure the board rectangle, the
 tray, the tray's block size, and how a dragged piece follows the finger.
