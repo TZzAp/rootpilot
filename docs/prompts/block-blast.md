@@ -65,3 +65,20 @@ From screen captures through the overlay (one pixel per point) on an iPhone X:
 
 `read_grid` and `drag_shape` work for other block puzzles too; measure the board rectangle, the
 tray, the tray's block size, and how a dragged piece follows the finger.
+
+## First round (2026-11-01, iPhone X, `deepseek-flash`, default thinking)
+
+| | |
+|---|---|
+| Final score | **2532** ("Best Score!"; the previous best on the phone was 1234) |
+| Pieces placed | 41, every one where the model aimed; 1 out-of-place move refused by `drag_shape` |
+| Line clears | 14 (4 of them two or more lines at once) |
+| Time | 16.4 min of play, 75 model calls, 7.4 s average per call |
+| Tokens | 2.75M input, 94k output |
+| End | a 1×5 bar with no row of 5 empty cells; the model stopped on the result screen, as told |
+
+What went wrong, and is fixed: at 1395 points the game switched to its dark "new best" theme and
+the board reader, tuned on the blue theme, saw dark-green blocks as empty; the run was stopped,
+the reader changed to "empty = the darkest colour on the board", and the same round continued.
+The context had grown to 90k tokens per call (old boards, replayed reasoning); with trimming the
+continued run stayed under 21k.
