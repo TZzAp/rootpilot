@@ -20,6 +20,7 @@ from agent.backends.hud_ocr import HudClipboard, HudOCR, HudPixels
 from agent.errors import BackendError, BackendTimeout, BackendUnsupported, ConfigError
 from agent.indicator import hud_installed
 from agent.paths import jbroot
+from agent.perception import png
 from agent.perception.png import RGBImage
 from agent.types import Button, Capability, Image, Rect, Size, UINode
 
@@ -51,6 +52,7 @@ class ZXTouchBackend:
         port: int = proto.DEFAULT_PORT,
         timeout: float = 5.0,
         ocr: str = "auto",
+        image_max_edge: int = 1280,
     ) -> None:
         require_loopback(host, port)
         if ocr not in ("auto", "hud", "zxtouch"):
@@ -59,6 +61,7 @@ class ZXTouchBackend:
         self._hud_ocr: Optional[HudOCR] = None
         self._clipboard = HudClipboard()
         self._pixels = HudPixels()
+        self._image_max_edge = image_max_edge
         self._last_tap: Optional[tuple[float, float]] = None  # where type_text pastes
         self._addr = (host, port)
         self._timeout = timeout
@@ -116,7 +119,12 @@ class ZXTouchBackend:
         if self._uiopen():
             caps.add(Capability.OPEN_URL)
         if hud_installed():  # typing, the clipboard and pixels go through the overlay
-            caps |= {Capability.TEXT_INPUT, Capability.CLIPBOARD, Capability.PIXELS}
+            caps |= {
+                Capability.TEXT_INPUT,
+                Capability.CLIPBOARD,
+                Capability.PIXELS,
+                Capability.SCREENSHOT,
+            }
         return frozenset(caps)
 
     # ZXTouch works in pixels (verified on iOS 16: 1125x2436 on an iPhone X, scale 3). The rest
@@ -151,7 +159,15 @@ class ZXTouchBackend:
         return Size(px.width / s, px.height / s)
 
     def screenshot(self) -> Image:
-        raise BackendUnsupported("ZXTouch cannot take screenshots; use observe's UI tree (OCR)")
+        # ZXTouch has no screenshot; the overlay captures inside SpringBoard and scales the
+        # image itself, so the long edge already fits image_max_edge (resizing in pure Python
+        # takes seconds on the phone).
+        if not hud_installed():
+            raise BackendUnsupported("screenshots need the overlay (hud/README.md)")
+        size = self.screen_size()
+        scale = max(1.0, min(3.0, self._image_max_edge / max(size.width, size.height)))
+        img = self._pixels.read(scale)
+        return Image(png.encode(img), img.width, img.height, scale=img.width / size.width)
 
     def pixels(self) -> RGBImage:
         if not hud_installed():

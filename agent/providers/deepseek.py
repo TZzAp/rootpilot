@@ -5,7 +5,10 @@ From DeepSeek's docs (checked 2026-10-29): base URL ``https://api.deepseek.com``
 tool-call turns is replayed from ``Message.raw`` for the newest turns; older ones are replaced
 by a placeholder. Replaying all of it made a 58-step game send 90k tokens per request by the end
 (measured 2026-11-01); the API accepted placeholders and even omitted fields in tests that day.
-No image input is documented, so the model works from the UI tree text only.
+Image input: ``deepseek-flash`` is V4.1 Flash, which reads images ("native multimodal visual
+understanding", 2026-09-10; the models endpoint lists image input). Images go in OpenAI's
+``image_url`` form; a 375x812 screenshot cost ~230 input tokens (tested 2026-11-01).
+``deepseek-v4-pro`` lists text only: run it with ``screenshots: false``.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ DEFAULT_MODEL = "deepseek-flash"
 
 class DeepSeekProvider(OpenAIProvider):
     name = "deepseek"
-    vision = False
+    vision = True  # V4.1 Flash (2026-09-10) reads images; checked with a phone screenshot
     max_tokens_field = "max_tokens"
     replay_fields = ("reasoning_content",)
     replay_keep = 4

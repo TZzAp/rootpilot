@@ -30,6 +30,7 @@ flags. The file is JSON; unknown keys are an error. A file containing API keys m
 | `max_seconds` | | `600` | wall-clock limit per run |
 | `max_output_tokens` | | `16000` | per model call; thinking counts toward it |
 | `image_max_edge` | | `1280` | screenshots are downscaled to this long edge (px) |
+| `screenshots` | | `true` | send screenshots to models that read images; `false` = UI tree (OCR text) only, fewer tokens |
 | `keep_screenshots` | | `3` | OpenAI-style providers: newest screenshots kept in context |
 | `save_screens` | | `false` | keep screenshots in the run directory (`--save-screens`) |
 | `sensitive_apps` | | `[]` | extra bundle IDs or globs, e.g. `["com.*bank*"]` |
@@ -37,9 +38,11 @@ flags. The file is JSON; unknown keys are an error. A file containing API keys m
 | `shell_allow_reboot` | | `false` | let `reboot`/`ldrestart` reach the confirmation prompt |
 | `category_defaults` | | `{}` | e.g. `{"clipboard_read": "allow", "act": "ask"}`; values `allow`/`ask`/`deny` |
 
-Providers without image input (DeepSeek, or `compat` with `compat_vision: false`) get the UI
-tree text only; RootPilot doesn't take screenshots for them. On ZXTouch the tree comes from text
-recognition, so this costs nothing there.
+Models that read images (Anthropic, OpenAI, DeepSeek `deepseek-flash` since V4.1) get a
+screenshot with each observation, next to the UI tree; the newest `keep_screenshots` stay in the
+context. On ZXTouch the screenshot comes from the overlay (it needs `hud/`). Text-only models
+(`deepseek-v4-pro`, or `compat` with `compat_vision: false`) and `screenshots: false` get the UI
+tree only. A 375×812 screenshot costs DeepSeek about 230 input tokens.
 
 Categories: `observe`, `act`, `app`, `clipboard_read`, `shell`, `meta`. Escalations (sensitive
 apps, irreversible taps, non-http URLs, password fields, the shell deny-list) apply on top of

@@ -270,3 +270,31 @@ def test_dark_theme_with_dark_blocks() -> None:
         "".join("." if ch == "." else "#" for ch in line) for line in rows
     ]
     assert [s.text() for s in blocks.find_shapes(img, *TRAY, CELL)] == ["#\n#\n#\n#"]
+
+
+def test_zxtouch_screenshot_comes_from_the_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent.backends import zxtouch
+    from agent.errors import BackendUnsupported
+    from agent.perception.image import png_size
+    from agent.types import Capability
+
+    backend = zxtouch.ZXTouchBackend(image_max_edge=1218)
+    monkeypatch.setattr(backend, "screen_size", lambda: Size(375, 812))
+    monkeypatch.setattr(zxtouch, "hud_installed", lambda: False)
+    with pytest.raises(BackendUnsupported, match="overlay"):
+        backend.screenshot()
+    monkeypatch.setattr(zxtouch, "hud_installed", lambda: True)
+    monkeypatch.setattr(backend, "_uiopen", lambda: False)
+    assert Capability.SCREENSHOT in backend.capabilities()
+    asked: list[float] = []
+
+    def read(scale: float = 1.0) -> RGBImage:
+        asked.append(scale)
+        w, h = round(375 * scale), round(812 * scale)
+        return RGBImage(w, h, b"\x10" * (w * h * 3))
+
+    monkeypatch.setattr(backend._pixels, "read", read)
+    shot = backend.screenshot()
+    assert asked == [1.5]  # long edge 812 pt -> 1218 px, scaled by the overlay, not in Python
+    assert (shot.width, shot.height, shot.scale) == (562, 1218, 562 / 375)
+    assert png_size(shot.png) == (562, 1218)

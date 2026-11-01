@@ -325,3 +325,14 @@ def test_cli_doctor_on_mock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     code = main(["doctor", "--backend", "mock", "--config", str(cfg)], out=out)
     assert code == 0, out.getvalue()
     assert "mock: 375x812 points" in out.getvalue()
+
+
+def test_screenshots_switch(mock_device: MockBackend, tmp_path: Path) -> None:
+    """screenshots: false keeps a vision model on the UI tree alone, with no capture."""
+    steps = [_call("done", {"answer": "ok", "success": True})]
+    agent, _, _ = make_agent(mock_device, steps, tmp_path, screenshots=False)
+    agent.run("look")
+    assert not [c for c in mock_device.calls if c[0] == "screenshot"]
+    agent, _, _ = make_agent(mock_device, list(steps), tmp_path)
+    agent.run("look")
+    assert [c for c in mock_device.calls if c[0] == "screenshot"]

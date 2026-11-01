@@ -152,8 +152,13 @@ class Agent:
             parts.append(TextPart("\n".join(header) + "\nUI tree:\n" + wrap_untrusted(tree_text)))
         else:
             parts.append(TextPart("\n".join(header) + "\n(no UI tree available)"))
-        # Text-only models (e.g. DeepSeek) get the UI tree alone; skip the capture entirely.
-        if include_screenshot and self.provider.vision and Capability.SCREENSHOT in caps:
+        # Text-only models, or screenshots switched off: the UI tree alone, no capture at all.
+        if (
+            include_screenshot
+            and self.config.screenshots
+            and self.provider.vision
+            and Capability.SCREENSHOT in caps
+        ):
             try:
                 shot = downscale(self.backend.screenshot(), self.config.image_max_edge)
             except BackendUnsupported:

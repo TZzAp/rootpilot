@@ -84,6 +84,10 @@ in a secure field) can reach the model and the log.
 - **Agent visibility.** While a run is active, the edge-glow overlay (or, without it, a toast)
   shows on the phone that the agent is in control, with a ripple where it is about to touch.
   The overlay hooks nothing, never takes touches and draws no text.
+- **Screenshots go to the model provider.** With a model that reads images, every observation
+  includes a screenshot (taken by the overlay, sent to the provider over HTTPS with your key),
+  so anything on screen reaches the provider, not only the text OCR picks up. Turn it off with
+  `screenshots: false` (control page: Settings) to send the UI tree text only.
 - **Clipboard and typing.** ZXTouch's keyboard input is not used: on iOS 16 it crashed SpringBoard
   and Safari (an unrecognized selector in its `appdelegate.dylib`), on iOS 15 it typed nothing.
   The overlay provides the clipboard through the same private-folder handshake, and `type_text`

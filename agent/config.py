@@ -56,6 +56,8 @@ class Config:
     # How hard the model thinks: "" (provider default), off, low, medium, high, max.
     effort: str = ""
     image_max_edge: int = 1280
+    # Send screenshots to models that take images. Off: the UI tree (OCR text) only.
+    screenshots: bool = True
     keep_screenshots: int = 3
     save_screens: bool = False
 

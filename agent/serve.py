@@ -312,6 +312,7 @@ class ControlServer:
                 "provider": cfg.provider,
                 "model": cfg.model,
                 "effort": cfg.effort or "default",
+                "screenshots": cfg.screenshots,
             }
             ocr = cfg.ocr
         except ConfigError as exc:

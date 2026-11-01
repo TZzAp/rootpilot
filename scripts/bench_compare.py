@@ -16,7 +16,8 @@ from typing import Any
 def label(r: dict[str, Any]) -> str:
     d, s = r.get("device", {}), r.get("settings", {})
     device = f"{d.get('name', '?')} (iOS {d.get('ios', '?')})"
-    return f"{device} · {s.get('model', '?')} · thinking {s.get('effort', '?')}"
+    shots = {True: " · screenshots", False: " · text only"}.get(s.get("screenshots"), "")
+    return f"{device} · {s.get('model', '?')} · thinking {s.get('effort', '?')}{shots}"
 
 
 def main() -> int:

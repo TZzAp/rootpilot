@@ -55,6 +55,7 @@ def config_view() -> dict[str, Any]:
         "max_steps": cfg.max_steps,
         "max_minutes": round(cfg.max_seconds / 60, 1),
         "max_tokens_k": round(cfg.max_tokens / 1000),
+        "screenshots": cfg.screenshots,
         "compat_base_url": cfg.compat_base_url,
         "ocr": cfg.ocr,
         "keys": {p: bool(getattr(cfg, f)) for p, f in KEY_FIELDS.items()},
@@ -94,6 +95,8 @@ def apply_config(update: dict[str, Any]) -> dict[str, Any]:
         data["max_steps"] = max(1, min(1000, int(update["max_steps"])))
     if "max_minutes" in update:
         data["max_seconds"] = round(max(0.5, min(240.0, float(update["max_minutes"]))) * 60)
+    if "screenshots" in update:
+        data["screenshots"] = bool(update["screenshots"])
     if "max_tokens_k" in update:
         # Long tasks (a whole game) resend a growing history every step: 1-3 million in total.
         data["max_tokens"] = max(10, min(20000, int(update["max_tokens_k"]))) * 1000

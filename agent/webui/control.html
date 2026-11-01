@@ -182,6 +182,7 @@
     </div>
     <label for="maxTokensK">Token budget per run (thousands, input + output)</label>
     <input id="maxTokensK" type="number" min="10" max="20000" step="50">
+    <label class="switch"><input type="checkbox" id="screenshots"> Send screenshots to the model (if it reads images; more tokens)</label>
     <div class="row">
       <button class="btn" id="save">Save</button>
       <button class="btn ghost" id="testProvider">Test provider</button>
@@ -378,6 +379,7 @@ async function loadSettings() {
   $("#provider").value = cfg.provider; $("#model").value = cfg.model || "";
   $("#effort").value = cfg.effort || ""; $("#maxSteps").value = cfg.max_steps; $("#maxMinutes").value = cfg.max_minutes;
   $("#maxTokensK").value = cfg.max_tokens_k;
+  $("#screenshots").checked = cfg.screenshots !== false;
   $("#compatUrl").value = cfg.compat_base_url || "";
   syncProvider();
   $("#settingsMsg").textContent = cfg.error ? "⚠️ " + cfg.error : "";
@@ -393,7 +395,8 @@ $("#provider").onchange = () => { if (cfg && $("#provider").value !== cfg.provid
 $("#save").onclick = async () => {
   const body = { provider: $("#provider").value, model: $("#model").value.trim(), effort: $("#effort").value,
     max_steps: Number($("#maxSteps").value), max_minutes: Number($("#maxMinutes").value),
-    max_tokens_k: Number($("#maxTokensK").value) };
+    max_tokens_k: Number($("#maxTokensK").value),
+    screenshots: $("#screenshots").checked };
   if (body.provider === "compat") body.compat_base_url = $("#compatUrl").value.trim();
   const key = $("#apiKey").value.trim(); if (key) body.api_key = key;
   const r = await api("api/config", body);

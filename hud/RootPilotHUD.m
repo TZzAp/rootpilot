@@ -536,8 +536,9 @@ static void RPClipboardHandle(void) {
 
 // ---- pixels ------------------------------------------------------------------------------
 //
-// The screen as raw RGB, one pixel per point, for reading boards of coloured blocks that OCR
-// can't see. Raw bytes because the device's Python has no image decoder fast enough.
+// The screen as raw RGB, ``scale`` pixels per point (1 by default), for reading boards of coloured
+// blocks that OCR can't see and for screenshots sent to the model. Raw bytes because the
+// device's Python has no image decoder or resizer fast enough.
 
 static void RPPixelsWrite(NSString *rid, CGSize size, NSString *error) {
     NSDictionary *result = @{
@@ -560,7 +561,9 @@ static void RPPixelsHandle(void) {
     if (![req isKindOfClass:NSDictionary.class]) return;
     NSString *rid = [req[@"id"] description] ?: @"";
     CGSize points = UIScreen.mainScreen.bounds.size;
-    size_t w = (size_t)round(points.width), h = (size_t)round(points.height);
+    double scale = [req[@"scale"] doubleValue];
+    scale = scale > 0 ? MAX(1.0, MIN(3.0, scale)) : 1.0;
+    size_t w = (size_t)round(points.width * scale), h = (size_t)round(points.height * scale);
     if (!RPScreenFunction()) {
         RPPixelsWrite(rid, CGSizeZero, @"_UICreateScreenUIImage not available");
         return;

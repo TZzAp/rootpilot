@@ -116,9 +116,10 @@ class HudPixels:
         self._folder = folder
         self._kw = kw
 
-    def read(self) -> RGBImage:
+    def read(self, scale: float = 1.0) -> RGBImage:
+        """``scale`` pixels per point (1-3); the overlay resizes, which Python can't do quickly."""
         folder = self._folder or hud_dir()
-        data = hud_request("pixels", {}, folder=folder, **self._kw)
+        data = hud_request("pixels", {"scale": scale}, folder=folder, **self._kw)
         # The overlay names the file, but read it from our own private folder regardless.
         path = folder / "pixels.rgb"
         try:

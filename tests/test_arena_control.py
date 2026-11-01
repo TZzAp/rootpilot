@@ -111,11 +111,12 @@ def test_settings_round_trip_never_returns_keys(home: Path) -> None:
             "max_steps": 60,
             "max_minutes": 12,
             "max_tokens_k": 2000,
+            "screenshots": False,
         }
     )
     assert view["provider"] == "deepseek" and view["keys"]["deepseek"] is True
     assert view["effort"] == "off" and view["max_steps"] == 60 and view["max_minutes"] == 12
-    assert view["max_tokens_k"] == 2000
+    assert view["max_tokens_k"] == 2000 and view["screenshots"] is False
     assert key not in json.dumps(view)
     path = home / "config" / "rootpilot" / "config.json"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600

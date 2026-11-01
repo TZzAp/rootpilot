@@ -59,7 +59,7 @@ def _conversation(provider: DeepSeekProvider, opener: FakeOpener) -> list[Messag
 def test_deepseek_request_shape_and_reasoning_replay() -> None:
     opener = FakeOpener(DS_REPLY, DS_REPLY)
     p = DeepSeekProvider(DS_KEY, redactor=Redactor([DS_KEY]), opener=opener)
-    assert p.model == "deepseek-flash" and not p.vision
+    assert p.model == "deepseek-flash" and p.vision  # V4.1 Flash reads images
     msgs = _conversation(p, opener)
     p.complete("sys", msgs, TOOLS, 1000)
 
@@ -73,8 +73,8 @@ def test_deepseek_request_shape_and_reasoning_replay() -> None:
     assistant = next(m for m in body["messages"] if m["role"] == "assistant")
     assert assistant["reasoning_content"] == "The user wants Settings; launch it."
     assert assistant["tool_calls"][0]["function"]["name"] == "launch_app"
-    # no image ever reaches a text-only model
-    assert "image_url" not in json.dumps(body)
+    # screenshots go in OpenAI's image_url form (accepted by the API, tested 2026-11-01)
+    assert "data:image/png;base64," in json.dumps(body)
     # history is append-only across requests
     first, second = opener.body(0), opener.body(1)
     assert second["messages"][: len(first["messages"])] == first["messages"]

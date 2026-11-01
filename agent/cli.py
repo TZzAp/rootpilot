@@ -42,7 +42,9 @@ def make_backend(cfg: Config, fixture: Optional[str]) -> Backend:
     if cfg.backend == "zxtouch":
         from agent.backends.zxtouch import ZXTouchBackend
 
-        return ZXTouchBackend(cfg.zxtouch_host, cfg.zxtouch_port, ocr=cfg.ocr)
+        return ZXTouchBackend(
+            cfg.zxtouch_host, cfg.zxtouch_port, ocr=cfg.ocr, image_max_edge=cfg.image_max_edge
+        )
     raise RootPilotError(f"unknown backend {cfg.backend!r}; choose mock or zxtouch")
 
 
