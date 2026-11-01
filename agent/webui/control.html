@@ -180,6 +180,8 @@
       <div><label for="maxSteps">Max steps per run</label><input id="maxSteps" type="number" min="1" max="1000"></div>
       <div><label for="maxMinutes">Max minutes per run</label><input id="maxMinutes" type="number" min="0.5" max="240" step="0.5"></div>
     </div>
+    <label for="maxTokensK">Token budget per run (thousands, input + output)</label>
+    <input id="maxTokensK" type="number" min="10" max="20000" step="50">
     <div class="row">
       <button class="btn" id="save">Save</button>
       <button class="btn ghost" id="testProvider">Test provider</button>
@@ -375,6 +377,7 @@ async function loadSettings() {
   $("#provider").innerHTML = cfg.providers.map(p => `<option value="${p}">${p}</option>`).join("");
   $("#provider").value = cfg.provider; $("#model").value = cfg.model || "";
   $("#effort").value = cfg.effort || ""; $("#maxSteps").value = cfg.max_steps; $("#maxMinutes").value = cfg.max_minutes;
+  $("#maxTokensK").value = cfg.max_tokens_k;
   $("#compatUrl").value = cfg.compat_base_url || "";
   syncProvider();
   $("#settingsMsg").textContent = cfg.error ? "⚠️ " + cfg.error : "";
@@ -389,7 +392,8 @@ function syncProvider() {
 $("#provider").onchange = () => { if (cfg && $("#provider").value !== cfg.provider) $("#model").value = ""; syncProvider(); };
 $("#save").onclick = async () => {
   const body = { provider: $("#provider").value, model: $("#model").value.trim(), effort: $("#effort").value,
-    max_steps: Number($("#maxSteps").value), max_minutes: Number($("#maxMinutes").value) };
+    max_steps: Number($("#maxSteps").value), max_minutes: Number($("#maxMinutes").value),
+    max_tokens_k: Number($("#maxTokensK").value) };
   if (body.provider === "compat") body.compat_base_url = $("#compatUrl").value.trim();
   const key = $("#apiKey").value.trim(); if (key) body.api_key = key;
   const r = await api("api/config", body);
