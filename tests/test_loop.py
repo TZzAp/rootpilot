@@ -336,3 +336,48 @@ def test_screenshots_switch(mock_device: MockBackend, tmp_path: Path) -> None:
     agent, _, _ = make_agent(mock_device, list(steps), tmp_path)
     agent.run("look")
     assert [c for c in mock_device.calls if c[0] == "screenshot"]
+
+
+def test_batched_actions_observe_once_after_the_last(
+    mock_device: MockBackend, tmp_path: Path
+) -> None:
+    """Keypad-style batches: one observation per reply, refs from the screen the model saw."""
+
+    def batch(messages: list[Message]) -> Completion:
+        calls = [
+            ToolCall("t1", "tap", {"x": 10, "y": 10}),
+            ToolCall("t2", "tap", {"x": 20, "y": 20}),
+            ToolCall("t3", "tap", {"x": 30, "y": 30}),
+        ]
+        return Completion("", calls, Usage(100, 10))
+
+    steps = [batch, _call("done", {"answer": "ok", "success": True})]
+    agent, provider, _ = make_agent(mock_device, steps, tmp_path)
+    mock_device.calls.clear()
+    agent.run("type 123")
+    taps = [i for i, c in enumerate(mock_device.calls) if c[0] == "tap"]
+    trees = [i for i, c in enumerate(mock_device.calls) if c[0] == "ui_tree"]
+    assert len(taps) == 3
+    # the first observation (run start), then exactly one after the third tap
+    assert len([i for i in trees if i > taps[0]]) == 1 and trees[-1] > taps[-1]
+    reply = provider.requests[-1][2][-1]
+    assert reply.count("more actions follow in this reply") == 2
+
+
+def test_a_failed_action_stops_the_rest_of_the_batch(
+    mock_device: MockBackend, tmp_path: Path
+) -> None:
+    def batch(messages: list[Message]) -> Completion:
+        calls = [
+            ToolCall("t1", "tap", {"ref": "e999"}),  # stale ref: an error
+            ToolCall("t2", "tap", {"x": 20, "y": 20}),
+        ]
+        return Completion("", calls, Usage(100, 10))
+
+    steps = [batch, _call("done", {"answer": "ok", "success": True})]
+    agent, provider, _ = make_agent(mock_device, steps, tmp_path)
+    mock_device.calls.clear()
+    agent.run("tap things")
+    assert not [c for c in mock_device.calls if c[0] == "tap"]
+    reply = provider.requests[-1][2][-1]
+    assert "an earlier action in this reply failed" in reply and "UI tree" in reply

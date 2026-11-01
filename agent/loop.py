@@ -43,6 +43,8 @@ UNTRUSTED_CLOSE = "</untrusted_screen_content>"
 # positions (a tap meant for "General" opened "Focus").
 SETTLE_SECONDS = {"swipe": 1.2, "launch_app": 1.5, "open_url": 1.5, "press_button": 1.0}
 DEFAULT_SETTLE_SECONDS = 0.6
+# Between actions batched in one reply: no observation, just time for the touch to land.
+BATCH_GAP_SECONDS = 0.25
 
 # Answer from the confirm callback: run once, refuse, or allow this category for the run.
 YES, NO, ALWAYS = "yes", "no", "always"
@@ -59,6 +61,9 @@ the latest UI tree; refs change after every observation. Use x/y coordinates in 
 only when no ref fits. Screen size: {width} x {height} points.
 - After each action you receive a fresh observation. Check that the action did what you \
 expected before moving on.
+- To save time, put several actions in one reply when none of them needs to see the result of \
+another (e.g. digits on a keypad you can see). They run in order, refs refer to the screen you \
+just saw, and you get one observation after the last.
 - Bundle IDs open apps directly, e.g. com.apple.Preferences (Settings).
 - When the task is complete, or cannot be completed, call done with a short, direct answer for \
 the user. Do not call done until you have verified the answer on screen.
@@ -372,15 +377,25 @@ class Agent:
 
                 results: list[ToolResult] = []
                 finished: Optional[tuple[str, bool]] = None
-                for call in completion.tool_calls:
+                # In a batch only the last screen-changing action is followed by an observation.
+                changing = [
+                    i
+                    for i, c in enumerate(completion.tool_calls)
+                    if (t := self.registry.get(c.name)) is not None and t.changes_screen
+                ]
+                last_change = changing[-1] if changing else -1
+                skip: Optional[str] = None
+                for index, call in enumerate(completion.tool_calls):
                     if finished is not None or self._stop_requested():
-                        results.append(
-                            ToolResult(
-                                call.id, [TextPart("not run: the run is ending")], is_error=True
-                            )
-                        )
+                        skip = "not run: the run is ending"
+                    if skip is not None:
+                        results.append(ToolResult(call.id, [TextPart(skip)], is_error=True))
                         continue
-                    outcome = self._execute(call)
+                    outcome = self._execute(call, observe=index >= last_change)
+                    if outcome.is_error and index < last_change:
+                        # The rest of the batch was planned on a screen that may be gone.
+                        skip = "not run: an earlier action in this reply failed"
+                        outcome.content.extend(self.observe())
                     results.append(ToolResult(call.id, list(outcome.content), outcome.is_error))
                     if outcome.finished is not None:
                         finished = outcome.finished
@@ -398,7 +413,7 @@ class Agent:
 
     # ---- one tool call ----
 
-    def _execute(self, call: ToolCall) -> ToolOutcome:
+    def _execute(self, call: ToolCall, observe: bool = True) -> ToolOutcome:
         tool = self.registry.get(call.name)
         args = call.arguments if isinstance(call.arguments, dict) else {}
         self.audit.event("tool_call", name=call.name, args=self._loggable_args(call.name, args))
@@ -467,7 +482,10 @@ class Agent:
                 outcome.finished,
             )
 
-        if tool.changes_screen and not outcome.is_error:
+        if tool.changes_screen and not outcome.is_error and not observe:
+            self.sleep(BATCH_GAP_SECONDS)
+            outcome.content.append(TextPart("(more actions follow in this reply; no observation)"))
+        elif tool.changes_screen and not outcome.is_error:
             self.sleep(SETTLE_SECONDS.get(call.name, DEFAULT_SETTLE_SECONDS))
             observation = self.observe()
             after = self.rendered.text if self.rendered else None
