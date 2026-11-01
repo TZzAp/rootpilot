@@ -141,7 +141,8 @@ def test_daemon_plist_follows_the_jailbreak_root(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(daemon, "jbroot", lambda: Path("/var/jb"))
     plist = plistlib.loads(daemon.daemon_plist("/var/mobile"))
     assert plist["ProgramArguments"] == [sys.executable, "-m", "agent", "serve"]
-    assert plist["UserName"] == "mobile" and plist["KeepAlive"] is True
+    assert "UserName" not in plist and plist["KeepAlive"] is True  # starts as root, then drops
+    assert plist["EnvironmentVariables"]["ROOTPILOT_RUN_AS"] == "mobile"
     assert plist["EnvironmentVariables"]["PATH"].startswith("/var/jb/usr/bin:")
     assert plist["StandardOutPath"] == "/var/mobile/.local/state/rootpilot/serve.log"
     assert daemon.install_path() == Path("/var/jb/Library/LaunchDaemons/com.rootpilot.serve.plist")
@@ -178,3 +179,28 @@ def test_capture_request_is_private_and_waits_for_the_overlay(
     assert folder == tmp_path / "rp" / "captures" / "demo"
     assert posted == ["com.rootpilot.hud.capture"]
     assert stat.S_IMODE(os.stat(tmp_path / "rp").st_mode) == 0o700
+
+
+def test_prepare_service_raises_limit_then_drops_root() -> None:
+    from agent.daemon import prepare_service
+    from agent.errors import RootPilotError
+
+    calls: list[Any] = []
+
+    def limit(mb: int) -> bool:
+        calls.append(("limit", mb))
+        return True
+
+    def drop(user: str) -> None:
+        calls.append(("drop", user))
+
+    # not root: nothing to do
+    assert prepare_service({}, getuid=lambda: 501, raise_limit=limit, drop=drop) is None
+    assert calls == []
+    # root without a target user: refuse to serve as root
+    with pytest.raises(RootPilotError, match="refusing"):
+        prepare_service({}, getuid=lambda: 0, raise_limit=limit, drop=drop)
+    env = {"ROOTPILOT_RUN_AS": "mobile", "ROOTPILOT_MEMORY_LIMIT_MB": "256"}
+    note = prepare_service(env, getuid=lambda: 0, raise_limit=limit, drop=drop)
+    assert calls == [("limit", 256), ("drop", "mobile")]  # limit first, while still root
+    assert note is not None and "256 MB" in note and "mobile" in note

@@ -524,8 +524,12 @@ def main(argv: Optional[list[str]] = None, out: TextIO = sys.stdout) -> int:
 
             return setup(args, out)
         if args.command == "serve":
+            from agent.daemon import prepare_service
             from agent.serve import run_server
 
+            note = prepare_service()  # under launchd: raise the memory limit, drop root
+            if note:
+                out.write(note + "\n")
             cfg = _load(args)
             if args.port:
                 cfg.serve_port = args.port
