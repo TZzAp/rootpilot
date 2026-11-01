@@ -16,7 +16,8 @@ from agent.perception.png import RGBImage
 from agent.redact import Redactor
 from agent.tools import handlers
 from agent.tools.handlers import ToolContext
-from agent.types import Size, UINode
+from agent.tools.registry import ToolOutcome
+from agent.types import Size, TextPart, UINode
 
 BG = (65, 82, 144)  # Block Blast's screen background
 EMPTY = (34, 40, 74)  # an empty board cell
@@ -109,6 +110,10 @@ def test_fits_and_placements() -> None:
     assert "already filled" in blocks.fits(grid, t, 4, 4)
 
 
+def _text(outcome: ToolOutcome) -> str:
+    return "\n".join(p.text for p in outcome.content if isinstance(p, TextPart))
+
+
 def _ctx(backend: MockBackend) -> ToolContext:
     return ToolContext(backend, lambda s, t: [], lambda q: "", Redactor())
 
@@ -143,18 +148,19 @@ def test_read_grid_then_drag_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = _ctx(backend)
 
     out = handlers.read_grid(ctx, dict(BOARD_ARGS))
-    text = out.content[0].text  # type: ignore[union-attr]
+    text = _text(out)
     assert " 0 #......#" in text and "piece 1: 1x5, 5 blocks" in text
     assert "fits at 6 (row,col): (0,1) (0,2) (5,0) (6,0) (6,1) (6,2)" in text
 
     refused = handlers.drag_shape(ctx, {"piece": 1, "row": 1, "col": 1})
-    assert refused.is_error and "already filled" in refused.content[0].text  # type: ignore[union-attr]
+    assert refused.is_error and "already filled" in _text(refused)
     assert not [c for c in backend.calls if c[0] == "swipe"]
 
     out = handlers.drag_shape(ctx, {"piece": 1, "row": 6, "col": 0})
     assert not out.is_error
-    text = out.content[0].text  # type: ignore[union-attr]
+    text = _text(out)
     assert text.startswith("Placed piece 1 at (6,0).") and "landed" not in text
+    assert [getattr(p, "snapshot", None) for p in out.content] == ["", "board"]
     assert " 6 #####..#" in text and "No pieces found" in text
     (swipe,) = [c for c in backend.calls if c[0] == "swipe"]
     x1, y1, x2, y2, ms = swipe[1]
@@ -174,7 +180,7 @@ def test_drag_shape_reports_where_a_piece_really_landed(monkeypatch: pytest.Monk
     backend = _backend(before, Canvas().board(rows).image())
     ctx = _ctx(backend)
     handlers.read_grid(ctx, dict(BOARD_ARGS))
-    text = handlers.drag_shape(ctx, {"piece": 1, "row": 6, "col": 0}).content[0].text  # type: ignore[union-attr]
+    text = _text(handlers.drag_shape(ctx, {"piece": 1, "row": 6, "col": 0}))
     assert "landed at about (5,0) instead of (6,0)" in text
 
 
@@ -221,3 +227,25 @@ def test_drag_shape_works_back_from_lift_and_gain(monkeypatch: pytest.MonkeyPatc
     assert gy - 93.5 + 1.5 * (fy - gy) == pytest.approx(ty)
     with pytest.raises(ToolInputError, match="drag_gain"):
         handlers.read_grid(ctx, {**BOARD_ARGS, "drag_gain": 9})
+
+
+def test_dark_theme_with_dark_blocks() -> None:
+    """Block Blast's "new best" theme: grey screen, near-black cells, dark-green blocks."""
+    canvas = Canvas()
+    canvas.px = bytearray(bytes((77, 76, 81)) * (canvas.width * canvas.height))
+    x0, y0, w, _ = BOARD
+    cell = w / 8
+    dark = {"g": (54, 88, 71), "b": (57, 72, 129), "r": (136, 33, 37)}
+    rows = [".rr.rggb", ".rgg....", "........", "......gg"]
+    rows += ["........", "....b...", "........", "g......."]
+    for r, line in enumerate(rows):
+        for c, ch in enumerate(line):
+            rgb = dark.get(ch, (47, 46, 51))
+            canvas.rect(x0 + c * cell + 1, y0 + r * cell + 1, cell - 2, cell - 2, rgb)
+    canvas.piece(288, 583, ["#", "#", "#", "#"], dark["g"])
+    img = canvas.image()
+    grid = blocks.read_grid(img, *BOARD, 8, 8)
+    assert [line[3:] for line in grid.text().splitlines()[1:]] == [
+        "".join("." if ch == "." else "#" for ch in line) for line in rows
+    ]
+    assert [s.text() for s in blocks.find_shapes(img, *TRAY, CELL)] == ["#\n#\n#\n#"]

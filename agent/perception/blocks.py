@@ -2,8 +2,8 @@
 
 Text-only models can't see colours: OCR finds no text on a board of coloured squares. These
 helpers turn screen pixels (RGB, one pixel per screen point) into a ``#``/``.`` map the model
-can reason about. A cell is "filled" when it is clearly more vivid (brighter and more
-saturated) than the empty cells around it.
+can reason about. Empty cells are the darkest, uniform colour on the board; anything clearly
+different is a block.
 """
 
 from __future__ import annotations
@@ -12,10 +12,9 @@ from dataclasses import dataclass, field
 
 from agent.perception.png import RGBImage
 
-# Vividness (max channel + chroma) that separates empty cells from blocks when the board is
-# all one class and there is nothing to compare against. Measured on Block Blast (iPhone X):
-# empty cells 123, blocks 279-378, the screen background 222.
-ABSOLUTE_FILLED = 250
+# Cells whose colours differ by less than this (sum of |R|+|G|+|B| differences) are the same
+# kind. Block Blast (iPhone X): an empty cell vs the darkest block is 69 (dark theme).
+SAME_COLOUR = 30
 
 
 def _vivid(rgb: tuple[int, int, int]) -> int:
@@ -42,30 +41,18 @@ def _mean(img: RGBImage, cx: float, cy: float, radius: float) -> tuple[int, int,
     return (r // n, g // n, b // n)
 
 
-def _split(values: list[int]) -> int:
-    """Threshold between "empty" and "filled" vividness values (Otsu's method).
+def _distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
+    return abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2])
 
-    Blocks alone differ a lot (green 280, orange 380), so a split is only kept when it puts
-    empty-looking cells on one side and block-looking cells on the other; otherwise the board
-    is all one class and the absolute threshold decides.
-    """
-    ordered = sorted(values)
-    best, best_score, best_means = ABSOLUTE_FILLED, -1.0, (0.0, 0.0)
-    total = sum(ordered)
-    low_sum = 0
-    for i in range(1, len(ordered)):
-        low_sum += ordered[i - 1]
-        if ordered[i] == ordered[i - 1]:
-            continue
-        n_low, n_high = i, len(ordered) - i
-        m_low, m_high = low_sum / n_low, (total - low_sum) / n_high
-        score = n_low * n_high * (m_high - m_low) ** 2
-        if score > best_score:
-            best, best_score = (ordered[i - 1] + ordered[i] + 1) // 2, score
-            best_means = (m_low, m_high)
-    if best_score < 0 or not best_means[0] < ABSOLUTE_FILLED <= best_means[1]:
-        return ABSOLUTE_FILLED
-    return best
+
+def _surroundings(img: RGBImage, x: float, y: float, width: float, height: float) -> int:
+    """Vividness of the screen just outside a rectangle (the median, so sparkles don't count)."""
+    samples = []
+    for sx in range(int(x), int(x + width), 6):
+        samples.append(_mean(img, sx, y - 8, 1))
+        samples.append(_mean(img, sx, y + height + 8, 1))
+    values = sorted(_vivid(c) for c in samples)
+    return values[len(values) // 2] if values else 0
 
 
 @dataclass
@@ -118,12 +105,20 @@ def read_grid(
     cw, ch = width / cols, height / rows
     # Sample the middle of each cell: edges carry bevels, grid lines and neighbours' shadows.
     radius = max(1.0, min(cw, ch) * 0.2)
-    vivid = [
-        [_vivid(_mean(img, x + (c + 0.5) * cw, y + (r + 0.5) * ch, radius)) for c in range(cols)]
+    colours = [
+        [_mean(img, x + (c + 0.5) * cw, y + (r + 0.5) * ch, radius) for c in range(cols)]
         for r in range(rows)
     ]
-    cut = _split([v for row in vivid for v in row])
-    return Grid(x, y, width, height, [[v >= cut for v in row] for row in vivid])
+    # Empty cells all look alike and are the darkest thing on the board; blocks come in many
+    # colours, some nearly as dark (Block Blast's "new best" theme: empty 56, dark green 122).
+    # Boards are recessed and blocks pop out, so if even the darkest cell is brighter than the
+    # screen around the board, there are no empty cells at all.
+    empty = min((c for row in colours for c in row), key=_vivid)
+    if _vivid(empty) > _surroundings(img, x, y, width, height):
+        return Grid(x, y, width, height, [[True] * cols for _ in range(rows)])
+    return Grid(
+        x, y, width, height, [[_distance(c, empty) > SAME_COLOUR for c in row] for row in colours]
+    )
 
 
 @dataclass
@@ -214,7 +209,6 @@ def find_shapes(
     edge += [_mean(img, sx + 0.5, y1 - 1, 0) for sx in range(x0, x1, 3)]
     edge.sort(key=_vivid)
     bg = edge[len(edge) // 2]
-    bg_vivid = _vivid(bg)
     px, stride = img.pixels, img.width * 3
     mask = []
     for sy in range(y0, y1):
@@ -222,9 +216,8 @@ def find_shapes(
         base = sy * stride
         for sx in range(x0, x1):
             i = base + sx * 3
-            rgb = (px[i], px[i + 1], px[i + 2])
-            diff = abs(rgb[0] - bg[0]) + abs(rgb[1] - bg[1]) + abs(rgb[2] - bg[2])
-            row.append(diff > 80 and _vivid(rgb) > bg_vivid + 30)
+            # Dark-green pieces on the dark theme's grey differ by only ~46.
+            row.append(_distance((px[i], px[i + 1], px[i + 2]), bg) > SAME_COLOUR)
         mask.append(row)
     shapes: list[Shape] = []
     min_side = max(2, int(cell * 0.5))
