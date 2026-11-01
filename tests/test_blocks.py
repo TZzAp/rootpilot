@@ -176,12 +176,33 @@ def test_drag_shape_reports_where_a_piece_really_landed(monkeypatch: pytest.Monk
     monkeypatch.setattr(handlers, "_sleep", lambda s: None)
     before = Canvas().board(START).piece(150, 612, ["#####"], COLOURS[0]).image()
     rows = list(START)
-    rows[5] = "#######"[:5] + "###"  # landed one row higher than asked
+    rows[6] = ".#####.#"  # one column to the right of where it was aimed
     backend = _backend(before, Canvas().board(rows).image())
     ctx = _ctx(backend)
     handlers.read_grid(ctx, dict(BOARD_ARGS))
     text = _text(handlers.drag_shape(ctx, {"piece": 1, "row": 6, "col": 0}))
-    assert "landed at about (5,0) instead of (6,0)" in text
+    assert text.startswith("Piece 1 landed at (6,1) instead of (6,0).")
+
+
+def test_drag_shape_counts_lines_and_notices_a_covered_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(handlers, "_sleep", lambda s: None)
+    before = Canvas().board(START).piece(150, 612, ["#####"], COLOURS[0]).image()
+    rows = list(START)
+    rows[5] = "........"  # (5,0) completes row 5, which clears
+    backend = _backend(before, Canvas().board(rows).image())
+    ctx = _ctx(backend)
+    handlers.read_grid(ctx, dict(BOARD_ARGS))
+    assert _text(handlers.drag_shape(ctx, {"piece": 1, "row": 5, "col": 0})).startswith(
+        "Placed piece 1 at (5,0). Cleared 1 line."
+    )
+    # The end-of-round screen replaces the board: no move explains what is read now.
+    backend = _backend(before, Canvas().image())
+    ctx = _ctx(backend)
+    handlers.read_grid(ctx, dict(BOARD_ARGS))
+    text = _text(handlers.drag_shape(ctx, {"piece": 1, "row": 6, "col": 0}))
+    assert text.startswith("The board changed in a way no single move explains")
 
 
 def test_drag_shape_needs_a_read_first() -> None:

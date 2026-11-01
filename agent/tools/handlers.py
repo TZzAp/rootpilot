@@ -311,36 +311,30 @@ def drag_shape(ctx: ToolContext, args: dict[str, Any]) -> ToolOutcome:
     new_grid, new_shapes = _stable_read(ctx, board)
     ctx.memo.update(grid=new_grid, shapes=new_shapes)
 
-    added = [
-        (r, c)
-        for r in range(new_grid.rows)
-        for c in range(new_grid.cols)
-        if new_grid.cells[r][c] and not grid.cells[r][c]
-    ]
-    cleared = sum(
-        1
-        for r in range(grid.rows)
-        for c in range(grid.cols)
-        if grid.cells[r][c] and not new_grid.cells[r][c]
-    )
-    if not added and not cleared:
+    # Predict the board (piece in, full lines out) and compare with what is on screen now.
+    expected, lines = blocks.place(grid, shape, row, col)
+    if new_grid.cells == expected:
+        head = f"Placed piece {index} at ({row},{col})."
+        if lines:
+            head += f" Cleared {lines} line{'s' if lines > 1 else ''}."
+    elif new_grid.cells == grid.cells:
         head = (
             f"Piece {index} did not drop: the board did not change. Read the board again; "
             "if this repeats, the game may be showing something else."
         )
     else:
-        want = [
-            (row + r, col + c)
-            for r in range(shape.rows)
-            for c in range(shape.cols)
-            if shape.cells[r][c]
+        elsewhere = [
+            (r, c)
+            for r, c in blocks.placements(grid, shape)
+            if blocks.place(grid, shape, r, c)[0] == new_grid.cells
         ]
-        landed = ""
-        if added and not cleared and sorted(added) != sorted(want):
-            r0, c0 = min(r for r, _ in added), min(c for _, c in added)
-            landed = f" It landed at about ({r0},{c0}) instead of ({row},{col})."
-        head = f"Placed piece {index} at ({row},{col})." + landed
-        if cleared:
-            head += f" Cleared {cleared} cells."
+        if elsewhere:
+            r, c = elsewhere[0]
+            head = f"Piece {index} landed at ({r},{c}) instead of ({row},{col})."
+        else:
+            head = (
+                "The board changed in a way no single move explains: something may cover it "
+                "(a popup, an animation, or the end-of-round screen). observe before moving again."
+            )
     body = _board_text(board, new_grid, new_shapes)
     return ToolOutcome([TextPart(head), TextPart(body, snapshot="board")])

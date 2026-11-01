@@ -270,3 +270,23 @@ def placements(grid: Grid, shape: Shape) -> list[tuple[int, int]]:
         for c in range(grid.cols - shape.cols + 1)
         if not fits(grid, shape, r, c)
     ]
+
+
+def place(grid: Grid, shape: Shape, row: int, col: int) -> tuple[list[list[bool]], int]:
+    """The board after dropping ``shape`` at (row, col) and clearing full rows and columns.
+
+    Returns the cells and how many lines cleared. Rows and columns clear together.
+    """
+    cells = [list(r) for r in grid.cells]
+    for r in range(shape.rows):
+        for c in range(shape.cols):
+            if shape.cells[r][c]:
+                cells[row + r][col + c] = True
+    full_rows = [r for r in range(grid.rows) if all(cells[r])]
+    full_cols = [c for c in range(grid.cols) if all(cells[r][c] for r in range(grid.rows))]
+    for r in full_rows:
+        cells[r] = [False] * grid.cols
+    for c in full_cols:
+        for r in range(grid.rows):
+            cells[r][c] = False
+    return cells, len(full_rows) + len(full_cols)
