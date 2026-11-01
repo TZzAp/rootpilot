@@ -24,6 +24,7 @@ import platform
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -198,6 +199,15 @@ def _loopback(host: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return host in ("localhost",)
+
+
+class _QuietServer(ThreadingHTTPServer):
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # Safari drops idle keep-alive connections all the time; Python 3.9 would print a
+        # full traceback for each one into serve.log.
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 
 class ControlServer:
@@ -388,7 +398,7 @@ class ControlServer:
     def serve(self, host: str = "127.0.0.1") -> ThreadingHTTPServer:
         if not _loopback(host):
             raise ConfigError(f"refusing to bind {host!r}: the control server is loopback-only")
-        httpd = ThreadingHTTPServer((host, self.cfg.serve_port), _make_handler(self))
+        httpd = _QuietServer((host, self.cfg.serve_port), _make_handler(self))
         return httpd
 
     @property
