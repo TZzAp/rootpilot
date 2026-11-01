@@ -43,6 +43,8 @@ class OpenAIProvider:
     max_tokens_field = "max_completion_tokens"
     # Fields of a returned assistant message that must be sent back verbatim on later requests.
     replay_fields: tuple[str, ...] = ()
+    replay_keep = 0  # replay those fields for the newest N assistant turns; 0 = all
+    keep_snapshots = 2  # newest TextParts per snapshot kind sent in full
     key_hint = "OPENAI_API_KEY or openai_api_key"
     default_model = ""
     api_url = API_URL
@@ -83,14 +85,33 @@ class OpenAIProvider:
     def build_request(
         self, system: str, messages: list[Message], tools: list[ToolSpec], max_output_tokens: int
     ) -> dict[str, Any]:
-        # Count images newest-first so only the last N survive.
+        # Count images and snapshots newest-first so only the last few survive.
         image_budget = self._keep
         keep: set[int] = set()
+        snapshots: dict[str, int] = {}
         for msg in reversed(messages):
             for part in reversed(_flat_parts(msg)):
                 if isinstance(part, ImagePart) and image_budget > 0:
                     keep.add(id(part))
                     image_budget -= 1
+                elif isinstance(part, TextPart) and part.snapshot:
+                    seen = snapshots.get(part.snapshot, 0)
+                    if seen < self.keep_snapshots:
+                        keep.add(id(part))
+                    snapshots[part.snapshot] = seen + 1
+
+        def text_of(part: TextPart) -> str:
+            if part.snapshot and id(part) not in keep:
+                return f"[older {part.snapshot} omitted; a newer one follows]"
+            return part.text
+
+        # Replay provider fields (DeepSeek's reasoning) for the newest few turns only.
+        assistants = [i for i, m in enumerate(messages) if m.role == "assistant"]
+        replay_from = (
+            assistants[-self.replay_keep]
+            if self.replay_keep and len(assistants) > self.replay_keep
+            else 0
+        )
 
         def image_or_note(part: ImagePart) -> dict[str, Any]:
             if not self.vision:
@@ -100,7 +121,7 @@ class OpenAIProvider:
             return {"type": "text", "text": "[older screenshot omitted]"}
 
         wire: list[dict[str, Any]] = [{"role": "system", "content": system}]
-        for msg in messages:
+        for index, msg in enumerate(messages):
             if msg.role == "assistant":
                 text = "\n".join(p.text for p in msg.parts if isinstance(p, TextPart))
                 calls = [p for p in msg.parts if isinstance(p, ToolCall)]
@@ -117,14 +138,15 @@ class OpenAIProvider:
                 if msg.raw_provider == self.name and isinstance(msg.raw, dict):
                     for name in self.replay_fields:
                         if name in msg.raw:
-                            entry[name] = msg.raw[name]
+                            old = index < replay_from
+                            entry[name] = "(earlier reasoning omitted)" if old else msg.raw[name]
                 wire.append(entry)
                 continue
             follow_up: list[dict[str, Any]] = []
             user_content: list[dict[str, Any]] = []
             for part in msg.parts:
                 if isinstance(part, ToolResult):
-                    texts = [p.text for p in part.content if isinstance(p, TextPart)]
+                    texts = [text_of(p) for p in part.content if isinstance(p, TextPart)]
                     prefix = "ERROR: " if part.is_error else ""
                     wire.append(
                         {
@@ -137,7 +159,7 @@ class OpenAIProvider:
                         image_or_note(p) for p in part.content if isinstance(p, ImagePart)
                     ]
                 elif isinstance(part, TextPart):
-                    user_content.append({"type": "text", "text": part.text})
+                    user_content.append({"type": "text", "text": text_of(part)})
                 elif isinstance(part, ImagePart):
                     user_content.append(image_or_note(part))
             if follow_up:

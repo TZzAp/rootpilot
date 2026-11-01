@@ -280,7 +280,7 @@ def read_grid(ctx: ToolContext, args: dict[str, Any]) -> ToolOutcome:
     board = _board_args(args)
     grid, shapes = _read_board(ctx, board)
     ctx.memo.update(board=board, grid=grid, shapes=shapes)
-    return ToolOutcome.text(_board_text(board, grid, shapes))
+    return ToolOutcome([TextPart(_board_text(board, grid, shapes), snapshot="board")])
 
 
 def drag_shape(ctx: ToolContext, args: dict[str, Any]) -> ToolOutcome:
@@ -343,4 +343,4 @@ def drag_shape(ctx: ToolContext, args: dict[str, Any]) -> ToolOutcome:
         if cleared:
             head += f" Cleared {cleared} cells."
     body = _board_text(board, new_grid, new_shapes)
-    return ToolOutcome.text(head + "\n" + body)
+    return ToolOutcome([TextPart(head), TextPart(body, snapshot="board")])

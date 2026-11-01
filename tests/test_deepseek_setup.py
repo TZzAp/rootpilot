@@ -216,3 +216,24 @@ def test_effort_validation_and_anthropic_mapping(tmp_path: Path) -> None:
     assert a.effort == "low"  # type: ignore[attr-defined]
     a = make_provider(Config(anthropic_api_key="sk-ant-x" + "y" * 30), Redactor())
     assert a.effort == "medium"  # type: ignore[attr-defined]
+
+
+def test_deepseek_trims_old_reasoning_and_old_boards() -> None:
+    """A long game must not resend every old board and every old thought (90k tokens/step)."""
+    from agent.types import ToolCall
+
+    p = DeepSeekProvider(DS_KEY, redactor=Redactor([DS_KEY]))
+    msgs = [Message("user", [TextPart("Task: play")])]
+    for i in range(6):
+        call = ToolCall(f"c{i}", "drag_shape", {"piece": 1, "row": i, "col": 0})
+        raw = {"reasoning_content": f"thought {i}"}
+        msgs.append(Message("assistant", [call], raw=raw, raw_provider="deepseek"))
+        board = TextPart(f"board {i}", snapshot="board")
+        msgs.append(Message("user", [ToolResult(f"c{i}", [TextPart(f"placed {i}"), board])]))
+    body = p.build_request("sys", msgs, TOOLS, 1000)
+    thoughts = [m["reasoning_content"] for m in body["messages"] if m["role"] == "assistant"]
+    assert thoughts == ["(earlier reasoning omitted)"] * 2 + [f"thought {i}" for i in range(2, 6)]
+    results = [m["content"] for m in body["messages"] if m["role"] == "tool"]
+    assert results[0] == "placed 0\n[older board omitted; a newer one follows]"
+    assert results[3] == "placed 3\n[older board omitted; a newer one follows]"
+    assert results[4:] == ["placed 4\nboard 4", "placed 5\nboard 5"]

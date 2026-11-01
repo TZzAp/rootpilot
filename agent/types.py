@@ -102,6 +102,9 @@ class UINode:
 @dataclass(frozen=True)
 class TextPart:
     text: str
+    # A snapshot of changing state (e.g. "board"). OpenAI-style providers send only the newest
+    # few of each kind in full: older boards are stale and would grow every request.
+    snapshot: str = ""
 
 
 @dataclass(frozen=True)
