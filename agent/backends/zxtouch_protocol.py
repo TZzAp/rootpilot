@@ -23,6 +23,8 @@ TASK_SHOW_TOAST = 22
 TASK_TEXT_RECOGNIZER = 27
 # TASK_RUN_SHELL (13) exists upstream and runs commands as root. RootPilot never sends it.
 
+# Keyboard tasks: not used. They crash SpringBoard on iOS 16 (appdelegate.dylib) and type
+# nothing on iOS 15; RootPilot types by pasting through the overlay instead.
 KEYBOARD_INSERT_TEXT = 1
 KEYBOARD_DELETE_CHARACTERS = 4
 

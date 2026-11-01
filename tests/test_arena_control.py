@@ -37,7 +37,7 @@ from tests.test_serve import TOKEN, Live
 def test_arena_labels_never_trigger_confirmations() -> None:
     page = (WEBUI / "arena.html").read_text()
     words = json.loads(re.search(r"const WORDS = (\[.*?\]);", page, re.S).group(1))  # type: ignore[union-attr]
-    labels = [*words, "OK", "Back", "DONE", "Tap", "Next", "type here"]
+    labels = [*words, "OK", "Back", "DONE", "Tap", "Next", "type here", "#1", "Paste"]
     pattern = re.compile(
         r"(?i)(?<![\w-])(" + "|".join(re.escape(w) for w in IRREVERSIBLE_WORDS) + r")(?![\w-])"
     )
@@ -166,7 +166,7 @@ def test_run_details_and_clear_history(home: Path) -> None:
 
 
 def bench_server(home: Path, monkeypatch: pytest.MonkeyPatch) -> ControlServer:
-    def build(state: ControlState, task: str, overrides: Any = None) -> Agent:
+    def build(state: ControlState, task: str, overrides: Any = None, bench: bool = False) -> Agent:
         url = re.search(r"http://\S+", task)
         if url:  # stand in for Safari: the page reports a perfect round
             q = parse_qs(urlparse(url.group(0)).query)
@@ -185,6 +185,7 @@ def bench_server(home: Path, monkeypatch: pytest.MonkeyPatch) -> ControlServer:
         )
         agent.report = state.report
         assert overrides and overrides["max_steps"] > 0
+        assert bench  # arena runs never wait for a human
         return agent
 
     monkeypatch.setattr(time, "sleep", lambda s: None)

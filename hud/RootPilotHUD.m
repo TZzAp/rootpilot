@@ -19,6 +19,7 @@
 #import <Vision/Vision.h>
 #include <dlfcn.h>
 #include <notify.h>
+#include <objc/message.h>
 #include <unistd.h>
 
 // Fixed, $HOME-independent location shared with RootPilot (agent/paths.py hud_dir): on
@@ -30,6 +31,9 @@ static NSString *const kCaptureStatus = @"/var/mobile/Library/RootPilot/capture.
 static NSString *const kCaptureDir = @"/var/mobile/Library/RootPilot/captures";
 static NSString *const kOCRRequest = @"/var/mobile/Library/RootPilot/ocr.request";
 static NSString *const kOCRResult = @"/var/mobile/Library/RootPilot/ocr.result.json";
+static NSString *const kClipRequest = @"/var/mobile/Library/RootPilot/clipboard.request";
+static NSString *const kClipResult = @"/var/mobile/Library/RootPilot/clipboard.result.json";
+static NSString *const kKillFile = @"/var/mobile/Library/RootPilot/KILL";
 
 // Self-report for `rootpilot doctor` and debugging: proves the overlay loaded and drew.
 static void RPWriteStatus(NSDictionary *extra) {
@@ -63,6 +67,7 @@ static void RPWriteStatus(NSDictionary *extra) {
 @property(nonatomic, strong) RPPassthroughWindow *window;
 @property(nonatomic, strong) CALayer *edge;      // masked container for the rotating gradient
 @property(nonatomic, strong) CAShapeLayer *glow;  // soft inner glow along the edge
+@property(nonatomic, strong) CAShapeLayer *killEdge;  // red edge shown when the kill switch fires
 @property(nonatomic, assign) BOOL active;
 + (instancetype)shared;
 @end
@@ -174,9 +179,22 @@ static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
     breathe.removedOnCompletion = NO;
     [glow addAnimation:breathe forKey:@"breathe"];
 
+    CAShapeLayer *killEdge = [CAShapeLayer layer];
+    killEdge.path = path.CGPath;
+    killEdge.fillColor = UIColor.clearColor.CGColor;
+    killEdge.strokeColor = RPColor(235, 64, 52).CGColor;
+    killEdge.lineWidth = width + 4;
+    killEdge.shadowColor = killEdge.strokeColor;
+    killEdge.shadowRadius = 18;
+    killEdge.shadowOpacity = 1;
+    killEdge.shadowOffset = CGSizeZero;
+    killEdge.opacity = 0;
+    [w.layer addSublayer:killEdge];
+
     self.window = w;
     self.edge = edge;
     self.glow = glow;
+    self.killEdge = killEdge;
 }
 
 - (void)show {
@@ -201,6 +219,27 @@ static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
             if (!self.active) self.window.hidden = YES;
         }];
     RPWriteStatus(@{@"visible" : @NO});
+}
+
+- (void)flashKill {
+    // Red edge pulses three times, then the overlay fades out: "RootPilot stopped".
+    [self build];
+    if (!self.window) return;
+    self.window.hidden = NO;
+    self.window.alpha = 1;
+    CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    pulse.fromValue = @1;
+    pulse.toValue = @0.15;
+    pulse.duration = 0.22;
+    pulse.autoreverses = YES;
+    pulse.repeatCount = 3;
+    self.killEdge.opacity = 1;
+    [self.killEdge addAnimation:pulse forKey:@"pulse"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+                     self.killEdge.opacity = 0;
+                     [self hide];
+                   });
 }
 
 - (void)rippleAt:(CGPoint)point {
@@ -462,6 +501,90 @@ static RPScreenFn RPScreenFunction(void) {
 
 @end
 
+// ---- clipboard ---------------------------------------------------------------------------
+//
+// ZXTouch's keyboard input is unusable (it crashed SpringBoard and Safari on iOS 16 and does
+// nothing on iOS 15), so RootPilot types by setting the clipboard here and tapping Paste.
+
+static void RPClipboardHandle(void) {
+    NSData *data = [NSData dataWithContentsOfFile:kClipRequest];
+    [NSFileManager.defaultManager removeItemAtPath:kClipRequest error:nil];
+    if (!data) return;
+    NSDictionary *req = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![req isKindOfClass:NSDictionary.class]) return;
+    NSString *rid = [req[@"id"] description] ?: @"";
+    NSString *op = [req[@"op"] description] ?: @"";
+    NSDictionary *result;
+    @try {
+        if ([op isEqualToString:@"set"] && [req[@"text"] isKindOfClass:NSString.class]) {
+            UIPasteboard.generalPasteboard.string = req[@"text"];
+            result = @{@"id" : rid, @"ok" : @YES};
+        } else if ([op isEqualToString:@"get"]) {
+            result = @{@"id" : rid, @"ok" : @YES, @"text" : UIPasteboard.generalPasteboard.string ?: @""};
+        } else {
+            result = @{@"id" : rid, @"ok" : @NO, @"error" : @"bad request"};
+        }
+    } @catch (NSException *e) {
+        result = @{@"id" : rid, @"ok" : @NO, @"error" : e.reason ?: @"clipboard error"};
+    }
+    [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:kClipResult
+                                                                          atomically:YES];
+}
+
+// ---- kill switch -------------------------------------------------------------------------
+//
+// Stops a running agent from the phone itself, whatever app is in front:
+//  - lock the phone (side/top button), or
+//  - press the volume buttons 4 times within 2.5 seconds, or
+//  - post com.rootpilot.hud.kill.
+// Only acts while RootPilot is running. Writes KILL, which the agent loop checks before every
+// model call and every action, and flashes the edge red.
+
+static void RPKill(NSString *source) {
+    RPHUD *hud = [RPHUD shared];
+    if (!hud.active) return;
+    NSDictionary *info = @{@"source" : source, @"ts" : @([NSDate date].timeIntervalSince1970)};
+    [[NSJSONSerialization dataWithJSONObject:info options:0 error:nil] writeToFile:kKillFile
+                                                                        atomically:YES];
+    notify_post("com.rootpilot.hud.killed");
+    hud.active = NO;
+    [hud flashKill];
+}
+
+static void RPWatchVolumeButtons(void) {
+    // AVSystemController only posts volume changes to subscribers on iOS 15+.
+    Class cls = NSClassFromString(@"AVSystemController");
+    SEL shared = NSSelectorFromString(@"sharedAVSystemController");
+    if (!cls || ![cls respondsToSelector:shared]) return;
+    id controller = ((id(*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL setAttr = NSSelectorFromString(@"setAttribute:forKey:error:");
+    NSString *name = @"AVSystemController_SystemVolumeDidChangeNotification";
+    if ([controller respondsToSelector:setAttr]) {
+        ((BOOL(*)(id, SEL, id, id, NSError **))objc_msgSend)(
+            controller, setAttr, @[ name ], @"AVSystemController_SubscribeToNotificationsAttribute", nil);
+    }
+    static NSMutableArray<NSNumber *> *presses;
+    presses = [NSMutableArray array];
+    [NSNotificationCenter.defaultCenter
+        addObserverForName:name
+                    object:nil
+                     queue:NSOperationQueue.mainQueue
+                usingBlock:^(NSNotification *note) {
+                  NSString *reason =
+                      note.userInfo[@"AVSystemController_AudioVolumeChangeReasonNotificationParameter"];
+                  if (reason && ![reason isEqualToString:@"ExplicitVolumeChange"]) return;
+                  NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+                  [presses addObject:@(now)];
+                  while (presses.count && now - presses.firstObject.doubleValue > 2.5) {
+                      [presses removeObjectAtIndex:0];
+                  }
+                  if (presses.count >= 4) {
+                      [presses removeAllObjects];
+                      RPKill(@"volume buttons");
+                  }
+                }];
+}
+
 static void RPRegister(void) {
     int token;
     dispatch_queue_t main = dispatch_get_main_queue();
@@ -474,6 +597,16 @@ static void RPRegister(void) {
     notify_register_dispatch("com.rootpilot.hud.idle", &token, main, ^(int t) {
       [[RPHUD shared] hide];
     });
+    notify_register_dispatch("com.rootpilot.hud.clipboard", &token, main, ^(int t) {
+      RPClipboardHandle();
+    });
+    notify_register_dispatch("com.apple.springboard.lockcomplete", &token, main, ^(int t) {
+      RPKill(@"lock button");
+    });
+    notify_register_dispatch("com.rootpilot.hud.kill", &token, main, ^(int t) {
+      RPKill(@"notification");
+    });
+    RPWatchVolumeButtons();
     notify_register_dispatch("com.rootpilot.hud.ocr", &token, main, ^(int t) {
       [[RPOCR shared] startFromRequest];
     });

@@ -21,6 +21,7 @@ from agent.paths import (
     hud_file,
     hud_status_file,
     jbroot,
+    kill_file,
     serve_token_file,
     state_dir,
     stop_file,
@@ -253,6 +254,7 @@ def make_agent(cfg: Config, args: argparse.Namespace, out: TextIO, interactive: 
         redactor=redactor,
         report=lambda line: print(line, file=out, flush=True),
         stop_file=stop_file(),
+        kill_file=kill_file(),
     )
     agent.audit = AuditLog.for_run(sd, agent.run_id, redactor)
     agent.screens_dir = sd / "runs" / agent.run_id
@@ -260,8 +262,18 @@ def make_agent(cfg: Config, args: argparse.Namespace, out: TextIO, interactive: 
     return agent
 
 
-def make_agent_for_serve(state: Any, overrides: Optional[dict[str, Any]] = None) -> Agent:
-    """Build an agent whose prompts and output are routed to the control page."""
+BENCH_EXCLUDED_TOOLS = ("shell", "clipboard_get", "ask_user")
+
+
+def make_agent_for_serve(
+    state: Any, overrides: Optional[dict[str, Any]] = None, bench: bool = False
+) -> Agent:
+    """Build an agent whose prompts and output are routed to the control page.
+
+    In benchmark mode no human is watching: tools that need one (shell, reading the clipboard,
+    asking the user) are left out, and any confirmation is denied at once instead of waiting.
+    Shell is also the obvious way around the arena's UI, so it has no place in a benchmark.
+    """
     from agent.serve import server_ask, server_confirm
 
     cfg = load_config(overrides=overrides)
@@ -271,14 +283,17 @@ def make_agent_for_serve(state: Any, overrides: Optional[dict[str, Any]] = None)
     agent = Agent(
         backend=backend,
         provider=make_provider(cfg, redactor),
-        registry=default_registry(),
+        registry=default_registry(exclude=BENCH_EXCLUDED_TOOLS if bench else ()),
         permissions=PermissionEngine(cfg),
         config=cfg,
-        confirm=server_confirm(state),
-        ask_user=server_ask(state),
+        confirm=(lambda tool, args, decision: NO) if bench else server_confirm(state),
+        ask_user=(lambda q: "No one is available; continue on your own.")
+        if bench
+        else server_ask(state),
         redactor=redactor,
         report=state.report,
         stop_file=stop_file(),
+        kill_file=kill_file(),
     )
     agent.audit = AuditLog.for_run(sd, agent.run_id, redactor)
     agent.screens_dir = sd / "runs" / agent.run_id
@@ -433,16 +448,28 @@ def bench(args: argparse.Namespace, out: TextIO) -> int:
     if started.get("error"):
         out.write(f"error: {started['error']}\n")
         return 1
+    bench_id = started.get("id")
+    out.write(f"benchmark {bench_id}: {args.suite}, seed {args.seed}\n")
     seen = 0
+    report: dict[str, Any] = {}
     while True:
         time.sleep(3)
         status = call()
-        for row in status.get("rows", [])[seen:]:
-            out.write(f"  {row['title']:<16} {row['correct']}/{row['total']}  {row['seconds']} s\n")
-        seen = len(status.get("rows", [])) if status.get("running") else seen
-        if not status.get("running"):
-            report = status.get("last") or {}
-            break
+        if status.get("running") and status.get("id") == bench_id:
+            for row in status.get("rows", [])[seen:]:
+                out.write(
+                    f"  {row['title']:<16} {row['correct']}/{row['total']}  {row['seconds']} s\n"
+                )
+            seen = len(status.get("rows", []))
+            continue
+        last = status.get("last") or {}
+        if last.get("id") == bench_id:
+            report = last
+        else:  # the server restarted: read the report it saved after each game
+            report = next((r for r in status.get("reports", []) if r.get("id") == bench_id), {})
+            report = {**report, "games": []}
+            out.write("note: the control server restarted during the benchmark\n")
+        break
     if args.json:
         out.write(json.dumps(report, indent=1) + "\n")
         return 0

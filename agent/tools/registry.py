@@ -68,7 +68,7 @@ class Registry:
         return [t.spec for t in self._tools.values()]
 
 
-def default_registry() -> Registry:
+def default_registry(exclude: tuple[str, ...] = ()) -> Registry:
     from agent.tools.specs import TOOLS
 
-    return Registry(list(TOOLS))
+    return Registry([t for t in TOOLS if t.name not in exclude])

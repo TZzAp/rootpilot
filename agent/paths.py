@@ -66,6 +66,11 @@ def hud_status_file(env: Optional[Mapping[str, str]] = None) -> Path:
     return hud_dir(env) / "hud.status.json"
 
 
+def kill_file(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Written by the overlay's kill switch; the agent stops before its next step."""
+    return hud_dir(env) / "KILL"
+
+
 def serve_token_file(env: Optional[Mapping[str, str]] = None) -> Path:
     return state_dir(env) / "serve_token"
 

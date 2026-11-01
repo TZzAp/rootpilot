@@ -105,3 +105,74 @@ def test_control_page_never_stuck_running(tmp_path: Path, monkeypatch: pytest.Mo
     snap = server.state.snapshot()
     assert not snap["running"] and snap["result"]["reason"] == "error"
     assert "no API key" in snap["result"]["answer"]
+
+
+# ---- clipboard, kill switch, benchmark mode ------------------------------------------
+
+
+def test_hud_clipboard_round_trip(tmp_path: Path) -> None:
+    from agent.backends.hud_ocr import HudClipboard
+
+    store: dict[str, str] = {}
+
+    def overlay(name: str) -> None:
+        assert name == "com.rootpilot.hud.clipboard"
+        req = json.loads((tmp_path / "clipboard.request").read_text())
+        if req["op"] == "set":
+            store["text"] = req["text"]
+            out = {"id": req["id"], "ok": True}
+        else:
+            out = {"id": req["id"], "ok": True, "text": store.get("text", "")}
+        (tmp_path / "clipboard.result.json").write_text(json.dumps(out))
+
+    clip = HudClipboard(folder=tmp_path, notify=overlay)
+    clip.set("lantern")
+    assert clip.get() == "lantern"
+    assert not (tmp_path / "clipboard.result.json").exists()  # user text isn't left behind
+
+
+def test_kill_switch_stops_the_run(tmp_path: Path) -> None:
+    from agent.backends.mock import DEMO_SCREENS, MockBackend
+    from agent.types import Completion, ToolCall, Usage
+    from tests.test_loop import make_agent
+
+    kill = tmp_path / "KILL"
+    kill.write_text("{}")  # left over from an earlier run: must not stop this one
+
+    def press_lock(messages: Any) -> Completion:
+        kill.write_text(json.dumps({"source": "lock button"}))
+        return Completion(
+            "", [ToolCall("a", "launch_app", {"bundle_id": "com.apple.Preferences"})], Usage()
+        )
+
+    device = MockBackend.from_dir(DEMO_SCREENS)
+    agent, _, _ = make_agent(device, [press_lock], tmp_path)
+    agent.kill_file = kill
+    result = agent.run("anything")
+    assert (
+        result.reason == "stopped" and result.answer == "Stopped by the kill switch (lock button)."
+    )
+    assert not any(op == "launch_app" for op, _ in device.calls)  # nothing after the kill
+
+
+def test_benchmark_agents_never_wait_for_a_human(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent.cli import make_agent_for_serve
+    from agent.loop import NO
+    from agent.serve import ControlState
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "c"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "s"))
+    monkeypatch.setenv("ROOTPILOT_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-" + "b" * 32)
+    monkeypatch.setenv("ROOTPILOT_BACKEND", "mock")
+    state = ControlState()
+    agent = make_agent_for_serve(state, {"max_steps": 5}, bench=True)
+    assert agent.registry.get("shell") is None and agent.registry.get("ask_user") is None
+    assert agent.registry.get("clipboard_get") is None and agent.registry.get("tap") is not None
+    assert agent.confirm(None, {}, None) == NO  # type: ignore[arg-type]
+    assert "continue on your own" in agent.ask_user("?")
+    assert state.pending is None and agent.config.max_steps == 5
+    normal = make_agent_for_serve(state)
+    assert normal.registry.get("shell") is not None and normal.kill_file is not None

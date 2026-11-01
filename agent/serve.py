@@ -162,12 +162,15 @@ def server_ask(state: ControlState) -> Callable[[str], str]:
 
 
 def default_build_agent(
-    state: ControlState, task: str, overrides: Optional[dict[str, Any]] = None
+    state: ControlState,
+    task: str,
+    overrides: Optional[dict[str, Any]] = None,
+    bench: bool = False,
 ) -> Agent:
     # Imported lazily so `serve` starts even when a provider/backend is misconfigured.
     from agent.cli import make_agent_for_serve
 
-    return make_agent_for_serve(state, overrides)
+    return make_agent_for_serve(state, overrides, bench)
 
 
 def device_info() -> dict[str, str]:
@@ -225,11 +228,15 @@ class ControlServer:
     def _run(self, task: str) -> None:
         self._execute(task)
 
-    def _execute(self, task: str, overrides: Optional[dict[str, Any]] = None) -> RunResult:
+    def _execute(
+        self, task: str, overrides: Optional[dict[str, Any]] = None, bench: bool = False
+    ) -> RunResult:
         """Run one task to the end, keeping the page's state current. Never raises."""
         stop_file().unlink(missing_ok=True)  # clear a STOP left by a previous run
         try:
-            extra = {"overrides": overrides} if overrides else {}
+            extra: dict[str, Any] = {"overrides": overrides} if overrides else {}
+            if bench:
+                extra["bench"] = True
             agent = self._build(self.state, task, **extra)
         except Exception as exc:
             self.state.begin("", task)
@@ -253,17 +260,38 @@ class ControlServer:
 
     # ---- benchmark --------------------------------------------------------------------
 
-    def start_bench(self, suite: str, seed: int) -> bool:
+    def start_bench(self, suite: str, seed: int) -> Optional[str]:
+        """Start a suite in the background; returns its report id, or None if busy."""
         if suite not in SUITES:
             raise ConfigError(f"unknown suite {suite!r}; choose {', '.join(SUITES)}")
+        bench_id = time.strftime("%Y%m%d-%H%M%S")
         with self.state.lock:
             if self.state.running or self.bench.get("running"):
-                return False
-            self.bench = {"running": True, "suite": suite, "seed": seed, "rows": [], "current": ""}
-        threading.Thread(target=self._bench, args=(suite, seed), daemon=True).start()
-        return True
+                return None
+            self.bench = {
+                "running": True,
+                "id": bench_id,
+                "suite": suite,
+                "seed": seed,
+                "rows": [],
+                "current": "",
+            }
+        threading.Thread(target=self._bench, args=(suite, seed, bench_id), daemon=True).start()
+        return bench_id
 
-    def _bench(self, suite: str, seed: int) -> None:
+    def _save_report(self, report: dict[str, Any]) -> None:
+        # Saved after every game, so a crash (SpringBoard, the phone, this server) loses at most
+        # the game in progress.
+        report["totals"] = totals(report["games"])
+        folder = ensure_private_dir(state_dir() / "bench")
+        path = folder / f"{report['id']}.json"
+        tmp = path.with_name(path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=1)
+        os.replace(tmp, path)
+
+    def _bench(self, suite: str, seed: int, bench_id: str) -> None:
         from agent.config import load_config
         from agent.indicator import hud_installed
 
@@ -286,7 +314,7 @@ class ControlServer:
             "overlay" if ocr == "hud" or (ocr == "auto" and hud_installed()) else "zxtouch"
         )
         report: dict[str, Any] = {
-            "id": time.strftime("%Y%m%d-%H%M%S"),
+            "id": bench_id,
             "suite": suite,
             "seed": seed,
             "started": time.time(),
@@ -309,6 +337,7 @@ class ControlServer:
                 result = self._execute(
                     task_for(game, url, seed),
                     {"max_steps": game.max_steps, "max_seconds": game.max_seconds},
+                    bench=True,
                 )
                 time.sleep(1.0)  # let the page's last score report land
                 row = score_game(
@@ -317,17 +346,14 @@ class ControlServer:
                 row["run_id"] = result.run_id
                 report["games"].append(row)
                 self.bench["rows"] = list(report["games"])
+                report["aborted"] = False
+                self._save_report(report)
                 if result.reason == "stopped":
                     self._bench_abort = True
         finally:
-            report["totals"] = totals(report["games"])
             report["finished"] = time.time()
             report["aborted"] = self._bench_abort
-            folder = ensure_private_dir(state_dir() / "bench")
-            path = folder / f"{report['id']}.json"
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(report, fh, indent=1)
+            self._save_report(report)
             self.bench = {"running": False, "last": report}
 
     def bench_status(self) -> dict[str, Any]:
@@ -573,7 +599,7 @@ def _make_handler(server: ControlServer) -> type[BaseHTTPRequestHandler]:
                     self._json(400, {"error": str(exc)})
                     return
                 if started:
-                    self._json(200, {"ok": True})
+                    self._json(200, {"ok": True, "id": started})
                 else:
                     self._json(409, {"error": "a run is already in progress"})
             else:

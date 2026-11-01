@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -109,6 +110,8 @@ class Agent:
     audit: AuditLog = field(default_factory=AuditLog.disabled)
     report: Report = lambda line: None
     stop_file: Optional[Path] = None
+    # Written by the overlay's kill switch (lock button, volume buttons) — see hud/README.md.
+    kill_file: Optional[Path] = None
     screens_dir: Optional[Path] = None
     run_id: str = field(
         default_factory=lambda: time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
@@ -201,9 +204,22 @@ class Agent:
         )
 
     def _stop_requested(self) -> bool:
-        return self.stop_file is not None and self.stop_file.exists()
+        return self._stop_reason() is not None
+
+    def _stop_reason(self) -> Optional[str]:
+        if self.kill_file is not None and self.kill_file.exists():
+            try:
+                source = json.loads(self.kill_file.read_text(encoding="utf-8")).get("source", "")
+            except (OSError, ValueError):
+                source = ""
+            return f"Stopped by the kill switch{f' ({source})' if source else ''}."
+        if self.stop_file is not None and self.stop_file.exists():
+            return "Stopped by the stop file."
+        return None
 
     def run(self, task: str) -> RunResult:
+        if self.kill_file is not None:
+            self.kill_file.unlink(missing_ok=True)  # a kill from an earlier run doesn't carry over
         start = self.clock()
         usage = Usage()
         steps = 0
@@ -246,8 +262,9 @@ class Agent:
             messages: list[Message] = [Message("user", list(first))]
 
             while True:
-                if self._stop_requested():
-                    return finish("Stopped by the stop file.", False, "stopped")
+                stop = self._stop_reason()
+                if stop:
+                    return finish(stop, False, "stopped")
                 if steps >= self.config.max_steps:
                     return finish(
                         f"Step budget ({self.config.max_steps}) used up.", False, "max_steps"

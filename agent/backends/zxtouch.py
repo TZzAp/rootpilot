@@ -16,7 +16,7 @@ import time
 from typing import Optional
 
 from agent.backends import zxtouch_protocol as proto
-from agent.backends.hud_ocr import HudOCR
+from agent.backends.hud_ocr import HudClipboard, HudOCR
 from agent.errors import BackendError, BackendTimeout, BackendUnsupported, ConfigError
 from agent.indicator import hud_installed
 from agent.paths import jbroot
@@ -56,6 +56,8 @@ class ZXTouchBackend:
             raise ConfigError(f"ocr must be auto, hud or zxtouch, not {ocr!r}")
         self._ocr_mode = ocr
         self._hud_ocr: Optional[HudOCR] = None
+        self._clipboard = HudClipboard()
+        self._last_tap: Optional[tuple[float, float]] = None  # where type_text pastes
         self._addr = (host, port)
         self._timeout = timeout
         self._sock: Optional[socket.socket] = None
@@ -108,9 +110,11 @@ class ZXTouchBackend:
     # ---- Backend protocol ----
 
     def capabilities(self) -> frozenset[Capability]:
-        caps = {Capability.TOUCH, Capability.TEXT_INPUT, Capability.LAUNCH_APP, Capability.UI_TREE}
+        caps = {Capability.TOUCH, Capability.LAUNCH_APP, Capability.UI_TREE}
         if self._uiopen():
             caps.add(Capability.OPEN_URL)
+        if hud_installed():  # typing and the clipboard go through the overlay
+            caps |= {Capability.TEXT_INPUT, Capability.CLIPBOARD}
         return frozenset(caps)
 
     # ZXTouch works in pixels (verified on iOS 16: 1125x2436 on an iPhone X, scale 3). The rest
@@ -186,6 +190,7 @@ class ZXTouchBackend:
         self._touch(proto.TOUCH_DOWN, x, y)
         time.sleep(0.05)
         self._touch(proto.TOUCH_UP, x, y)
+        self._last_tap = (x, y)
 
     def long_press(self, x: float, y: float, duration_ms: int) -> None:
         self._touch(proto.TOUCH_DOWN, x, y)
@@ -208,13 +213,40 @@ class ZXTouchBackend:
         self._touch(proto.TOUCH_UP, x2, y2)
 
     def type_text(self, text: str) -> None:
-        for ch in text:
-            if ch == "\b":
-                self._request(
-                    proto.encode(proto.TASK_KEYBOARD, proto.KEYBOARD_DELETE_CHARACTERS, 1)
-                )
+        """Type by pasting: put the text on the clipboard, long-press the field, tap Paste.
+
+        ZXTouch's own keyboard input is never used: on iOS 16 it crashed SpringBoard and Safari
+        (an unrecognized selector in its appdelegate.dylib), and on iOS 15 it typed nothing.
+        """
+        if not hud_installed():
+            raise BackendUnsupported("typing needs the overlay (hud/README.md)")
+        if self._last_tap is None:
+            raise BackendError("tap the text field first, then type")
+        x, y = self._last_tap
+        self._clipboard.set(text)
+        for attempt in range(2):
+            # A long press on a focused field opens the edit menu; on the second try a tap
+            # on the already-focused field does the same in some apps.
+            if attempt == 0:
+                self.long_press(x, y, 700)
             else:
-                self._request(proto.encode(proto.TASK_KEYBOARD, proto.KEYBOARD_INSERT_TEXT, ch))
+                self.tap(x, y)
+            time.sleep(0.7)
+            paste = self._find_paste(y)
+            if paste is not None:
+                self.tap(*paste)
+                time.sleep(0.4)
+                self._last_tap = (x, y)
+                return
+        raise BackendError("the Paste option did not appear; the field may not accept text")
+
+    def _find_paste(self, near_y: float) -> Optional[tuple[float, float]]:
+        boxes = [b for b in self._read_text() if b[0].strip().lower() == "paste"]
+        if not boxes:
+            return None
+        # the edit menu appears just above or below the field
+        _text, x, y, w, h = min(boxes, key=lambda b: abs(b[2] + b[4] / 2 - near_y))
+        return (x + w / 2, y + h / 2)
 
     def press_button(self, button: Button) -> None:
         if button is not Button.HOME:
@@ -248,10 +280,14 @@ class ZXTouchBackend:
         self._request(proto.toast(text, max(1, int(duration))))
 
     def clipboard_get(self) -> str:
-        raise BackendUnsupported("ZXTouch has no working clipboard API")
+        if not hud_installed():
+            raise BackendUnsupported("the clipboard needs the overlay (hud/README.md)")
+        return self._clipboard.get()
 
     def clipboard_set(self, text: str) -> None:
-        raise BackendUnsupported("ZXTouch has no working clipboard API")
+        if not hud_installed():
+            raise BackendUnsupported("the clipboard needs the overlay (hud/README.md)")
+        self._clipboard.set(text)
 
     def foreground_app(self) -> Optional[str]:
         return None

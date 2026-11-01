@@ -11,7 +11,7 @@ With ``--rootless`` it instead builds a minimal rootless package (Dopamine, pale
 only the tweak and its data folder, installed under /var/jb, with the tweak's substrate
 load commands pointed at ``@rpath/libsubstrate.dylib`` and an LC_RPATH of /var/jb/usr/lib.
 The ZXTouch app, its bundled Python 3.7 and helper binaries are left out; RootPilot only
-needs the tweak.
+needs the tweak. Both variants leave out appdelegate.dylib, which crashes SpringBoard on iOS 16.
 
 Usage: python3 scripts/zxtouch_loopback.py [--rootless] com.zjx.ioscontrol_0.0.7-10_iphoneos-arm.deb
 """
@@ -26,6 +26,12 @@ import tempfile
 from pathlib import Path
 
 DYLIB = "Library/MobileSubstrate/DynamicLibraries/pccontrol.dylib"
+# ZXTouch's per-app helper: its keyboard code calls a selector iOS 16 no longer has and crashed
+# SpringBoard and Safari. RootPilot types through the overlay, so it is left out.
+APPDELEGATE = (
+    "Library/MobileSubstrate/DynamicLibraries/appdelegate.dylib",
+    "Library/MobileSubstrate/DynamicLibraries/appdelegate.plist",
+)
 FILTER = "Library/MobileSubstrate/DynamicLibraries/pccontrol.plist"
 OLD, NEW = b"0.0.0.0\x00", b"127.1\x00\x00\x00"
 SUDOERS_LINE = 'echo "mobile ALL=(root) NOPASSWD:/usr/bin/zxtouchb" >> /etc/sudoers\n'
@@ -155,6 +161,9 @@ def main(argv: list[str]) -> int:
             root = pkg
         else:
             out = deb.with_name(f"{stem}+loopback_iphoneos-arm.deb")
+            for rel in APPDELEGATE:
+                (root / rel).unlink(missing_ok=True)
+            print("left out appdelegate.dylib (crashes SpringBoard on iOS 16)")
             postinst = root / "DEBIAN" / "postinst"
             if postinst.exists():
                 text = postinst.read_text()

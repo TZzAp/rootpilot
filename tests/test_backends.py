@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 import threading
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -129,13 +130,12 @@ def test_zxtouch_backend_round_trip(fake_zx: FakeZXTouch) -> None:
     assert tree.children[0].frame == Rect(20, 150, 60, 20)  # points
     assert not tree.label  # the root carries no text of its own
     dev.tap(20, 30)
-    dev.type_text("hi")
     dev.launch_app("com.apple.Preferences")
     sent = list(fake_zx.received)
     # 20,30 points -> 60,90 pixels, x10 on the wire
     assert b"1011050060000900" in sent and b"1010050060000900" in sent
     assert b"271;;0,,0,,1125,,2436;;;;;;0;;;;0;;" in sent
-    assert b"241;;h" in sent and b"241;;i" in sent
+    assert not any(line.startswith(b"24") for line in sent)  # never ZXTouch's keyboard
     assert b"11com.apple.Preferences" in sent
     assert not any(line.startswith(b"13") for line in sent)  # never the root-shell task
     with pytest.raises(BackendUnsupported):
@@ -160,3 +160,41 @@ def test_zxtouch_backend_round_trip(fake_zx: FakeZXTouch) -> None:
     dev.press_button(Button.HOME)
     assert fake_zx.received == [b"11com.apple.springboard"]
     dev.close()
+
+
+def test_type_text_pastes_through_the_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent.backends.zxtouch as zx
+    from agent.backends.hud_ocr import HudClipboard
+    from agent.errors import BackendError, BackendUnsupported
+
+    dev = ZXTouchBackend()
+    monkeypatch.setattr(zx, "hud_installed", lambda: False)
+    with pytest.raises(BackendUnsupported):
+        dev.type_text("x")
+    monkeypatch.setattr(zx, "hud_installed", lambda: True)
+    monkeypatch.setattr("agent.backends.zxtouch.time.sleep", lambda s: None)
+    actions: list[Any] = []
+    clipboard: list[str] = []
+    monkeypatch.setattr(HudClipboard, "set", lambda self, text: clipboard.append(text))
+    monkeypatch.setattr(
+        dev, "_touch", lambda kind, x, y: actions.append((kind, round(x), round(y)))
+    )
+    with pytest.raises(BackendError, match="tap the text field"):
+        dev.type_text("lantern")
+    dev.tap(100, 200)  # the agent taps the field first
+    menus = iter(
+        [
+            [("Paste", 60.0, 150.0, 40.0, 16.0), ("Paste", 60.0, 700.0, 40.0, 16.0)],
+        ]
+    )
+    monkeypatch.setattr(dev, "_read_text", lambda: next(menus))
+    actions.clear()
+    dev.type_text("lantern")
+    assert clipboard == ["lantern"]
+    # long press on the field, then a tap on the Paste nearest the field
+    assert actions[0] == (1, 100, 200) and actions[1] == (0, 100, 200)
+    assert actions[-2:] == [(1, 80, 158), (0, 80, 158)]
+
+    monkeypatch.setattr(dev, "_read_text", lambda: [])
+    with pytest.raises(BackendError, match="Paste option did not appear"):
+        dev.type_text("lantern")
