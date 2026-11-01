@@ -4,7 +4,8 @@ ZXTouch's OCR leaks 15-30 MB of SpringBoard memory per read (measured on iOS 15 
 long runs end with jetsam killing SpringBoard. The overlay runs Apple's Vision text recognition
 inside an autorelease pool and frees the screen image after each read.
 
-The same handshake also carries clipboard requests (HudClipboard). Requests use the same
+The same handshake also carries clipboard requests (HudClipboard) and raw screen pixels
+(HudPixels). Requests use the same
 private-folder handshake as screen capture: RootPilot writes
 ``ocr.request`` (with an id) into its 0700 folder and posts ``com.rootpilot.hud.ocr``; the
 overlay answers in ``ocr.result.json`` with the same id. Coordinates come back in points.
@@ -22,6 +23,7 @@ from typing import Any, Callable, Optional
 from agent.errors import BackendError, BackendTimeout
 from agent.indicator import NOTIFY_PREFIX, _notify_poster
 from agent.paths import ensure_private_dir, hud_dir
+from agent.perception.png import RGBImage
 
 Box = tuple[str, float, float, float, float]
 
@@ -105,3 +107,29 @@ class HudClipboard:
         if not data.get("ok"):
             raise BackendError(f"clipboard: {data.get('error', 'failed')}")
         return str(data.get("text", ""))
+
+
+class HudPixels:
+    """The screen as RGB, one pixel per point, for boards of coloured blocks OCR can't see."""
+
+    def __init__(self, folder: Optional[Path] = None, **kw: Any) -> None:
+        self._folder = folder
+        self._kw = kw
+
+    def read(self) -> RGBImage:
+        folder = self._folder or hud_dir()
+        data = hud_request("pixels", {}, folder=folder, **self._kw)
+        # The overlay names the file, but read it from our own private folder regardless.
+        path = folder / "pixels.rgb"
+        try:
+            if not data.get("ok"):
+                raise BackendError(f"overlay pixels: {data.get('error') or 'failed'}")
+            width, height = int(data["w"]), int(data["h"])
+            raw = path.read_bytes()
+        except (OSError, KeyError, ValueError) as exc:
+            raise BackendError(f"overlay pixels: {exc}") from exc
+        finally:
+            path.unlink(missing_ok=True)  # it is a picture of the screen
+        if len(raw) != width * height * 3:
+            raise BackendError(f"overlay pixels: expected {width}x{height}, got {len(raw)} bytes")
+        return RGBImage(width, height, raw)

@@ -34,6 +34,9 @@ static NSString *const kOCRResult = @"/var/mobile/Library/RootPilot/ocr.result.j
 static NSString *const kClipRequest = @"/var/mobile/Library/RootPilot/clipboard.request";
 static NSString *const kClipResult = @"/var/mobile/Library/RootPilot/clipboard.result.json";
 static NSString *const kKillFile = @"/var/mobile/Library/RootPilot/KILL";
+static NSString *const kPixelsRequest = @"/var/mobile/Library/RootPilot/pixels.request";
+static NSString *const kPixelsResult = @"/var/mobile/Library/RootPilot/pixels.result.json";
+static NSString *const kPixelsData = @"/var/mobile/Library/RootPilot/pixels.rgb";
 
 // Self-report for `rootpilot doctor` and debugging: proves the overlay loaded and drew.
 static void RPWriteStatus(NSDictionary *extra) {
@@ -531,6 +534,78 @@ static void RPClipboardHandle(void) {
                                                                           atomically:YES];
 }
 
+// ---- pixels ------------------------------------------------------------------------------
+//
+// The screen as raw RGB, one pixel per point, for reading boards of coloured blocks that OCR
+// can't see. Raw bytes because the device's Python has no image decoder fast enough.
+
+static void RPPixelsWrite(NSString *rid, CGSize size, NSString *error) {
+    NSDictionary *result = @{
+        @"id" : rid ?: @"",
+        @"ok" : @(error.length == 0),
+        @"w" : @((NSInteger)size.width),
+        @"h" : @((NSInteger)size.height),
+        @"file" : kPixelsData,
+        @"error" : error ?: @""
+    };
+    [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:kPixelsResult
+                                                                          atomically:YES];
+}
+
+static void RPPixelsHandle(void) {
+    NSData *data = [NSData dataWithContentsOfFile:kPixelsRequest];
+    [NSFileManager.defaultManager removeItemAtPath:kPixelsRequest error:nil];
+    if (!data) return;
+    NSDictionary *req = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![req isKindOfClass:NSDictionary.class]) return;
+    NSString *rid = [req[@"id"] description] ?: @"";
+    CGSize points = UIScreen.mainScreen.bounds.size;
+    size_t w = (size_t)round(points.width), h = (size_t)round(points.height);
+    if (!RPScreenFunction()) {
+        RPPixelsWrite(rid, CGSizeZero, @"_UICreateScreenUIImage not available");
+        return;
+    }
+    UIImage *shot = (__bridge_transfer UIImage *)RPScreenFunction()();
+    CGImageRef image = shot.CGImage;
+    if (!image) {
+        RPPixelsWrite(rid, CGSizeZero, @"screen capture failed");
+        return;
+    }
+    CGImageRetain(image);
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.rootpilot.hud.pixels", DISPATCH_QUEUE_SERIAL); });
+    dispatch_async(queue, ^{
+      @autoreleasepool {
+        NSMutableData *rgba = [NSMutableData dataWithLength:w * h * 4];
+        CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+        CGContextRef ctx = CGBitmapContextCreate(rgba.mutableBytes, w, h, 8, w * 4, space,
+                                                 kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big);
+        CGColorSpaceRelease(space);
+        NSString *error = nil;
+        if (ctx) {
+            CGContextSetInterpolationQuality(ctx, kCGInterpolationMedium);
+            CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
+            CGContextRelease(ctx);
+            // Drop the padding byte: Python then reads 3 bytes per pixel with no conversion.
+            NSMutableData *rgb = [NSMutableData dataWithLength:w * h * 3];
+            const uint8_t *src = rgba.bytes;
+            uint8_t *dst = rgb.mutableBytes;
+            for (size_t i = 0, n = w * h; i < n; i++) {
+                dst[i * 3] = src[i * 4];
+                dst[i * 3 + 1] = src[i * 4 + 1];
+                dst[i * 3 + 2] = src[i * 4 + 2];
+            }
+            if (![rgb writeToFile:kPixelsData atomically:YES]) error = @"could not write pixels";
+        } else {
+            error = @"could not create a bitmap";
+        }
+        CGImageRelease(image);
+        RPPixelsWrite(rid, CGSizeMake(w, h), error);
+      }
+    });
+}
+
 // ---- kill switch -------------------------------------------------------------------------
 //
 // Stops a running agent from the phone itself, whatever app is in front:
@@ -612,6 +687,9 @@ static void RPRegister(void) {
     });
     notify_register_dispatch("com.rootpilot.hud.capture", &token, main, ^(int t) {
       [[RPCapture shared] startFromRequest];
+    });
+    notify_register_dispatch("com.rootpilot.hud.pixels", &token, main, ^(int t) {
+      RPPixelsHandle();
     });
 }
 

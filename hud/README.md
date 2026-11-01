@@ -30,6 +30,7 @@ overlay answers in `<kind>.result.json`, which RootPilot deletes after reading.
 | `ocr` | Vision text recognition of the screen, inside an autorelease pool | ZXTouch's OCR leaks 15–30 MB of SpringBoard memory per read until SpringBoard is killed |
 | `clipboard` | set / get the general pasteboard; `type_text` pastes | ZXTouch's keyboard input crashes SpringBoard and Safari on iOS 16 and does nothing on iOS 15 |
 | `capture` | save screen frames (`rootpilot capture`) | |
+| `pixels` | the screen as raw RGB, one pixel per point, for `read_grid` (boards of coloured blocks that OCR can't see) | ZXTouch has no screenshot; decoding a PNG in pure Python takes seconds on the phone |
 
 ## Kill switch
 

@@ -123,6 +123,8 @@ class Agent:
     rendered: Optional[RenderedTree] = field(default=None, init=False)
     root: Optional[UINode] = field(default=None, init=False)
     last_launched: Optional[str] = field(default=None, init=False)
+    # Tools that build on their own earlier calls (read_grid, then drag_shape) keep state here.
+    tool_memo: dict[str, object] = field(default_factory=dict, init=False)
     _shots: int = field(default=0, init=False)
 
     # ---- observation ----
@@ -220,6 +222,7 @@ class Agent:
     def run(self, task: str) -> RunResult:
         if self.kill_file is not None:
             self.kill_file.unlink(missing_ok=True)  # a kill from an earlier run doesn't carry over
+        self.tool_memo = {}
         start = self.clock()
         usage = Usage()
         steps = 0
@@ -406,7 +409,13 @@ class Agent:
         before = self.rendered.text if self.rendered else None
         before_app = self.foreground_app()
         tctx = ToolContext(
-            self.backend, self.observe, self.ask_user, self.redactor, self.rendered, self.root
+            self.backend,
+            self.observe,
+            self.ask_user,
+            self.redactor,
+            self.rendered,
+            self.root,
+            self.tool_memo,
         )
         try:
             outcome = tool.handler(tctx, args)

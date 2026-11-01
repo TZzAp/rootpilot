@@ -55,6 +55,7 @@ class Capability(str, enum.Enum):
     OPEN_URL = "open_url"
     CLIPBOARD = "clipboard"
     FOREGROUND_APP = "foreground_app"
+    PIXELS = "pixels"
 
 
 @dataclass

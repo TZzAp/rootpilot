@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Protocol
 
+from agent.perception.png import RGBImage
 from agent.types import Button, Capability, Image, Size, UINode
 
 
@@ -21,6 +22,10 @@ class Backend(Protocol):
     def screen_size(self) -> Size: ...
 
     def screenshot(self) -> Image: ...
+
+    def pixels(self) -> RGBImage:
+        """The screen as RGB with one pixel per point (``Capability.PIXELS``)."""
+        ...
 
     def ui_tree(self) -> Optional[UINode]: ...
 

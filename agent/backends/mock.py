@@ -82,6 +82,8 @@ class MockBackend:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.typed = ""
         self.clipboard = ""
+        # Screens for pixels(), oldest first; tests queue them. The last one stays.
+        self.frames: list[png.RGBImage] = []
 
     @classmethod
     def from_dir(cls, directory: Path, start: str = "start") -> MockBackend:
@@ -114,6 +116,13 @@ class MockBackend:
         # 1/5-scale blank image: tests care about plumbing, not pixels.
         w, h = int(self.current.size.width / 5), int(self.current.size.height / 5)
         return Image(png=png.solid(w, h), width=w, height=h, scale=0.2)
+
+    def pixels(self) -> png.RGBImage:
+        self._record("pixels")
+        if self.frames:
+            return self.frames.pop(0) if len(self.frames) > 1 else self.frames[0]
+        w, h = int(self.current.size.width), int(self.current.size.height)
+        return png.RGBImage(w, h, b"\xff" * (w * h * 3))
 
     def ui_tree(self) -> Optional[UINode]:
         self._record("ui_tree")

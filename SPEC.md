@@ -88,6 +88,8 @@ permission category, and the handler. The agent loop and the MCP server (M4) bot
 | `clipboard_get` | `{}` | text | clipboard_read |
 | `clipboard_set` | `{text: str}` | ok | act |
 | `wait` | `{seconds: number (0.1–10)}` | observation | observe |
+| `read_grid` | `{x,y,width,height: number, rows,cols: int, pieces?: {x,y,width,height,cell}, drag_lift?, drag_gain?}` | board as `#`/`.` text, loose pieces and where each fits | observe |
+| `drag_shape` | `{piece, row, col: int}` | refuses non-fitting places; drags, then the new board and pieces | act |
 | `shell` | `{command: str, timeout_s?: int=20}` | stdout/stderr/exit (truncated) | shell |
 | `ask_user` | `{question: str}` | user's answer | meta |
 | `done` | `{answer: str, success: bool}` | ends the run | meta |
@@ -105,6 +107,7 @@ class Backend(Protocol):
     def capabilities(self) -> frozenset[Capability]: ...  # SCREENSHOT, UI_TREE, CLIPBOARD, ...
     def screen_size(self) -> Size: ...  # points, portrait-normalised
     def screenshot(self) -> Image: ...  # PNG bytes + pixel size + scale
+    def pixels(self) -> RGBImage: ...  # raw RGB, one pixel per point (PIXELS; via the overlay)
     def ui_tree(self) -> UINode | None: ...  # None if unsupported
     def tap(self, x: float, y: float) -> None: ...
     def long_press(self, x: float, y: float, duration_ms: int) -> None: ...

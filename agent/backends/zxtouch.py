@@ -16,10 +16,11 @@ import time
 from typing import Optional
 
 from agent.backends import zxtouch_protocol as proto
-from agent.backends.hud_ocr import HudClipboard, HudOCR
+from agent.backends.hud_ocr import HudClipboard, HudOCR, HudPixels
 from agent.errors import BackendError, BackendTimeout, BackendUnsupported, ConfigError
 from agent.indicator import hud_installed
 from agent.paths import jbroot
+from agent.perception.png import RGBImage
 from agent.types import Button, Capability, Image, Rect, Size, UINode
 
 _FINGER = 5
@@ -57,6 +58,7 @@ class ZXTouchBackend:
         self._ocr_mode = ocr
         self._hud_ocr: Optional[HudOCR] = None
         self._clipboard = HudClipboard()
+        self._pixels = HudPixels()
         self._last_tap: Optional[tuple[float, float]] = None  # where type_text pastes
         self._addr = (host, port)
         self._timeout = timeout
@@ -113,8 +115,8 @@ class ZXTouchBackend:
         caps = {Capability.TOUCH, Capability.LAUNCH_APP, Capability.UI_TREE}
         if self._uiopen():
             caps.add(Capability.OPEN_URL)
-        if hud_installed():  # typing and the clipboard go through the overlay
-            caps |= {Capability.TEXT_INPUT, Capability.CLIPBOARD}
+        if hud_installed():  # typing, the clipboard and pixels go through the overlay
+            caps |= {Capability.TEXT_INPUT, Capability.CLIPBOARD, Capability.PIXELS}
         return frozenset(caps)
 
     # ZXTouch works in pixels (verified on iOS 16: 1125x2436 on an iPhone X, scale 3). The rest
@@ -150,6 +152,11 @@ class ZXTouchBackend:
 
     def screenshot(self) -> Image:
         raise BackendUnsupported("ZXTouch cannot take screenshots; use observe's UI tree (OCR)")
+
+    def pixels(self) -> RGBImage:
+        if not hud_installed():
+            raise BackendUnsupported("reading pixels needs the overlay (hud/README.md)")
+        return self._pixels.read()
 
     def ocr_engine(self) -> str:
         """Which text recognition ui_tree uses: "overlay" (leak-free) or "zxtouch"."""

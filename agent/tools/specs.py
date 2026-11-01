@@ -67,6 +67,58 @@ TOOLS: tuple[ToolDef, ...] = (
         h.swipe,
     ),
     ToolDef(
+        "read_grid",
+        "Read a board of coloured cells that OCR can't see (block puzzles) as text: '#' filled, "
+        "'.' empty. Give the board rectangle in screen points and its size in cells. With "
+        "'pieces', also read the loose pieces you can drag and list where each one fits.",
+        _obj(
+            {
+                "x": {"type": "number", "description": "board left edge, points"},
+                "y": {"type": "number", "description": "board top edge, points"},
+                "width": {"type": "number"},
+                "height": {"type": "number"},
+                "rows": {"type": "integer"},
+                "cols": {"type": "integer"},
+                "pieces": {
+                    "type": "object",
+                    "description": "where the draggable pieces are, and their block size",
+                    "properties": {
+                        "x": {"type": "number"},
+                        "y": {"type": "number"},
+                        "width": {"type": "number"},
+                        "height": {"type": "number"},
+                        "cell": {"type": "number", "description": "one block's size, points"},
+                    },
+                    "required": ["x", "y", "width", "height", "cell"],
+                },
+                "drag_lift": {
+                    "type": "number",
+                    "description": "points a dragged piece floats above the finger (game-specific)",
+                },
+                "drag_gain": {
+                    "type": "number",
+                    "description": "how far a dragged piece moves per point of finger movement "
+                    "(1 = it follows the finger; game-specific)",
+                },
+            },
+            ("x", "y", "width", "height", "rows", "cols"),
+        ),
+        Category.OBSERVE,
+        h.read_grid,
+    ),
+    ToolDef(
+        "drag_shape",
+        "Drag piece N (numbering from the latest read_grid) onto the board so the top-left "
+        "corner of its box lands on (row, col). Refuses places where it doesn't fit. Returns "
+        "the new board and pieces.",
+        _obj(
+            {"piece": {"type": "integer"}, "row": {"type": "integer"}, "col": {"type": "integer"}},
+            ("piece", "row", "col"),
+        ),
+        Category.ACT,
+        h.drag_shape,
+    ),
+    ToolDef(
         "type_text",
         "Type text into the focused field, or tap the field given by ref first. "
         "Never works on password fields: ask the user to type secrets themselves.",
