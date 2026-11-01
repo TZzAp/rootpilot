@@ -22,7 +22,7 @@ Play exactly ONE round of the game Block Blast! (Classic mode) until you lose, t
 GET TO THE BOARD
 1. launch_app com.blockpuzzle.us.ios, then observe.
 2. On the main menu ("Adventure" and "Classic" buttons) tap "Classic". Never tap Adventure, GOGO! Blast, Rotate Rings, the picture icon or the gear.
-3. If a popup covers the game, close it with its X in the top-right corner of the popup (the "Survey" popup: tap x=310, y=238). Never answer surveys, never watch ads, never buy anything.
+3. If a popup covers the board during play (e.g. "Survey"), close it with its X in the top-right corner of the popup (the "Survey" popup: tap x=310, y=238). Never answer surveys, never buy anything.
 4. Play the round that is on screen. If the board already has blocks, continue it. Never restart.
 
 SEE THE BOARD
@@ -45,6 +45,7 @@ STRATEGY (decide quickly, think about the next pieces too)
 - Always try to keep room for a 3x3 square and for a 5-long bar (the hardest pieces).
 
 END OF THE ROUND
+- After the last move the game shows an advert (an app's name, "App Store", "Install") and then the result screen. Never tap an advert, not even to close it or skip it: call wait (5 seconds) again and again, up to a minute, until "Best Score!" or the score screen appears.
 - The round is over when the tool says "No piece fits anywhere", or a result / game-over screen appears. Then do not tap anything: no Revive, no Continue, no ads, no Play again, no new round.
 - observe once to read the final score, then call done with: the final score, how many pieces you placed, how many times you cleared lines, and why the round ended.
 - If drag_shape says a piece "did not drop" twice in a row, observe: a popup may cover the game. Close it with its X as above (never through an ad).
@@ -82,3 +83,17 @@ the board reader, tuned on the blue theme, saw dark-green blocks as empty; the r
 the reader changed to "empty = the darkest colour on the board", and the same round continued.
 The context had grown to 90k tokens per call (old boards, replayed reasoning); with trimming the
 continued run stayed under 21k.
+
+## Second round: screenshots on, after the speed work (same day)
+
+| | First round (text only) | Second round (screenshots) |
+|---|---|---|
+| Final score | 2532 | **4014** |
+| Pieces / line clears | 41 / 14 | 76 / 29 |
+| Seconds per piece | 24.1 | 19.1 |
+| Model time per move (median) | 3.7 s | 6.6 s |
+| Input tokens | 2.75M (37k per call) | 1.70M (20k per call) |
+
+One round each, and the pieces are random, so the score difference is not proof. After the last
+move an advert appeared and the model tapped it, opening an App Store page, which it closed (no
+install); the prompt now says to wait out adverts instead of closing them.
