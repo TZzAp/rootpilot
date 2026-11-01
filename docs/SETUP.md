@@ -120,6 +120,13 @@ And from your computer, `nc -vz <device-ip> 6000` must fail with "connection ref
 > If you install the unpatched package, it **will** listen on all interfaces: only enable it on
 > a network you trust, and uninstall it when you're not using it.
 
+### 3c-bis. ZXTouch's appdelegate.dylib
+
+The patch script leaves out ZXTouch's `appdelegate.dylib`: its keyboard code crashes SpringBoard
+and Safari on iOS 16. If you installed an older patched package, disable it:
+`sudo mv /Library/MobileSubstrate/DynamicLibraries/appdelegate.plist{,.disabled}` and respring.
+RootPilot types through the overlay instead.
+
 ### 3d. If the ZXTouch app icon doesn't open
 
 RootPilot only needs the ZXTouch *tweak*. The ZXTouch *app* ships signed for a foreign
@@ -244,7 +251,41 @@ A SpringBoard overlay draws a glowing edge around the screen while a run is acti
 ripple where the agent is about to touch. Build and install it as described in
 [`hud/README.md`](../hud/README.md). `rootpilot doctor` shows whether it is loaded.
 
-## 10. Screenshots and recordings (optional)
+## 10. Kill switch
+
+With the overlay installed, stop a running agent from the phone itself:
+
+- **lock the phone** (side/top button), or
+- **press the volume buttons 4 times within 2.5 seconds**.
+
+The edge flashes red and the run ends ("Stopped by the kill switch"). The control page's
+**STOP AI** bar and `touch ~/.local/state/rootpilot/STOP` still work too.
+
+## 11. Benchmark (RootPilot Arena)
+
+Short, seeded mini-games served on the phone (no outside sites) that score the agent on reading
+the screen, tapping, sequencing, scrolling, typing and simple reasoning, plus one real iOS app:
+
+```sh
+rootpilot bench --suite full --seed 7      # or the Benchmark tab on the control page
+```
+
+Run the same suite and seed on another phone (or with other settings) and compare:
+
+```sh
+python3 scripts/bench_compare.py phoneA.json phoneB.json
+```
+
+Reports are in `~/.local/state/rootpilot/bench/`. Keep the phone unlocked with Auto-Lock off
+while it runs — RootPilot cannot unlock a phone.
+
+## 12. After a reboot (Dopamine)
+
+Dopamine is semi-untethered: after a reboot the phone is not jailbroken (no SSH, no RootPilot
+server, no overlay) until you open the Dopamine app and tap **Jailbreak** again. Everything comes
+back on its own afterwards.
+
+## 13. Screenshots and recordings (optional)
 
 With the overlay installed, `rootpilot capture` saves screen frames as JPEGs (the README media
 was made this way). Frames include whatever is on screen, so keep personal data out of shot:

@@ -18,6 +18,29 @@ It is deliberately passive:
 - **Reports its state** to `/var/mobile/Library/RootPilot/hud.status.json` (loaded, visible, PID),
   which `rootpilot doctor` and the control page read.
 
+## Services it provides
+
+SpringBoard can do a few things an SSH-started Python process can't, so the overlay offers them
+through request/response files in the private folder `/var/mobile/Library/RootPilot` (`0700`):
+RootPilot writes `<kind>.request` with a random id, posts `com.rootpilot.hud.<kind>`, and the
+overlay answers in `<kind>.result.json`, which RootPilot deletes after reading.
+
+| Kind | What it does | Why not ZXTouch |
+|---|---|---|
+| `ocr` | Vision text recognition of the screen, inside an autorelease pool | ZXTouch's OCR leaks 15–30 MB of SpringBoard memory per read until SpringBoard is killed |
+| `clipboard` | set / get the general pasteboard; `type_text` pastes | ZXTouch's keyboard input crashes SpringBoard and Safari on iOS 16 and does nothing on iOS 15 |
+| `capture` | save screen frames (`rootpilot capture`) | |
+
+## Kill switch
+
+While a run is active (`com.rootpilot.hud.active`), the overlay stops the agent when you
+**lock the phone** or **press the volume buttons 4 times within 2.5 s**. It writes
+`/var/mobile/Library/RootPilot/KILL` (source and time), posts `com.rootpilot.hud.killed`, flashes
+the edge red and hides the glow. The agent loop checks the file before every model call and
+action. Any process posting the Darwin notification `com.rootpilot.hud.kill` does the same
+(it can only stop the agent, so it isn't gated). Pressing volume
+still changes the volume; the overlay only listens, it doesn't take the buttons.
+
 ## Build (Linux)
 
 Needs `clang`, `ld64.lld` (Debian: `lld-21`) and an iPhoneOS SDK, e.g. `iPhoneOS16.5.sdk` from

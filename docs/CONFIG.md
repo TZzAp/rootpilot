@@ -23,6 +23,8 @@ flags. The file is JSON; unknown keys are an error. A file containing API keys m
 | `zxtouch_host` | `ROOTPILOT_ZXTOUCH_HOST` | `127.0.0.1` | loopback only |
 | `zxtouch_port` | `ROOTPILOT_ZXTOUCH_PORT` | `6000` | |
 | `serve_port` | `ROOTPILOT_SERVE_PORT` | `8366` | control page port (loopback only) |
+| `effort` | `ROOTPILOT_EFFORT` | (provider default) | thinking: `off`, `low`, `medium`, `high`, `max` |
+| `ocr` | | `auto` | screen reading: `auto` (the overlay if installed), `hud`, `zxtouch` (leaks SpringBoard memory) |
 | `max_steps` | | `40` | model calls per run (`--max-steps`) |
 | `max_tokens` | | `400000` | input + output tokens per run |
 | `max_seconds` | | `600` | wall-clock limit per run |

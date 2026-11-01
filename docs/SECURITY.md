@@ -84,6 +84,20 @@ in a secure field) can reach the model and the log.
 - **Agent visibility.** While a run is active, the edge-glow overlay (or, without it, a toast)
   shows on the phone that the agent is in control, with a ripple where it is about to touch.
   The overlay hooks nothing, never takes touches and draws no text.
+- **Clipboard and typing.** ZXTouch's keyboard input is not used: on iOS 16 it crashed SpringBoard
+  and Safari (an unrecognized selector in its `appdelegate.dylib`), on iOS 15 it typed nothing.
+  The overlay provides the clipboard through the same private-folder handshake, and `type_text`
+  pastes. Typing therefore replaces the clipboard's contents. Reading the clipboard is still a
+  permission-gated tool (`clipboard_get`, asks by default); result files are deleted after reading.
+- **The control-page daemon starts as root** for one reason: iOS gives third-party launchd daemons
+  an 18 MB hard memory limit, which killed the server as soon as a run began, and only root may
+  raise it. `rootpilot serve` raises its own limit (300 MB, still fatal) and permanently drops to
+  `mobile` before loading config, keys or the agent; it refuses to keep running as root unless
+  `ROOTPILOT_RUN_AS` names another user.
+- **Benchmarks run without a human.** Arena runs leave out `shell`, `clipboard_get` and
+  `ask_user`, and deny any confirmation immediately. (In the first benchmark the agents tried to
+  `curl` the game page via `shell` to get around the UI; the permission engine held them, but the
+  wait for an absent human cost whole games.)
 - **Screen capture.** The overlay can save screen frames (`rootpilot capture`), used for docs and
   debugging. It captures only when RootPilot has written a request file into its private 0700
   folder (`/var/mobile/Library/RootPilot`); posting the Darwin notification alone does nothing,
@@ -105,6 +119,15 @@ Limits: a deny-list can be bypassed with enough obfuscation (encoding, scripts, 
 second line of defence; **the confirmation prompt is the real control — read the command.**
 
 ### 5. Runaway runs and the kill switch
+
+**Kill switch on the phone** (needs the overlay, `hud/`): while a run is active,
+- **lock the phone** with the side/top button, or
+- **press the volume buttons 4 times within 2.5 seconds**,
+
+and the agent stops before its next model call or action; the screen edge flashes red. The overlay
+writes `/var/mobile/Library/RootPilot/KILL`, which the loop checks alongside the stop file; a kill
+never carries over to the next run. Any process can also post `com.rootpilot.hud.kill` — that can
+only ever *stop* the agent, so it is not gated.
 
 - Budgets end every run: 40 steps, 400k tokens and 600 s by default (`max_steps`, `max_tokens`,
   `max_seconds`).

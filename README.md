@@ -33,8 +33,8 @@
 
 - **Runs on the phone.** A pure-Python, standard-library-only core (Python 3.9+): nothing to
   compile on the device. Works over SSH too.
-- **Sees and acts.** Reads the screen (text recognition through ZXTouch), taps, swipes, types,
-  opens apps and URLs, and verifies each step before the next.
+- **Sees and acts.** Reads the screen (on-device text recognition), taps, swipes, types (through
+  the clipboard), opens apps and URLs, and verifies each step before the next.
 - **Your model, your key.** Anthropic (default `claude-opus-5-5`), DeepSeek, OpenAI, or any
   OpenAI-compatible server for local models. `rootpilot setup` picks one and stores the key
   (`0600`).
@@ -42,8 +42,13 @@
   for sensitive apps (Wallet, Messages, Mail, banking…) and for shell commands; it never types
   into password fields. Screen text is treated as untrusted data, not instructions.
 - **Visible and stoppable.** A home-screen icon opens a control page to start tasks, watch each
-  step, answer Allow/Deny prompts, stop a run and browse history. While the agent is in control,
-  an orange glow runs around the screen edge.
+  step and the live screen, answer Allow/Deny prompts, switch provider/model/thinking, and browse
+  history. While the agent is in control an orange glow runs around the screen edge. **Kill
+  switch:** lock the phone, or press the volume buttons 4× quickly — the edge flashes red and the
+  agent stops.
+- **Benchmarkable.** The built-in **RootPilot Arena** scores the agent on seeded mini-games
+  (reading, tapping, sequencing, scrolling, typing, a real iOS app) so phones, models and settings
+  can be compared head to head.
 - **Accountable.** Every run is logged as JSONL with secrets redacted; budgets cap steps, tokens
   and time.
 
@@ -57,9 +62,10 @@ flowchart LR
     CLI --> L
     subgraph Phone["On the iPhone"]
         L["Agent loop<br/>budgets · verification · audit log"] -- every tool call --> P{"Permission<br/>engine"}
-        P -- allowed --> B["ZXTouch backend<br/>touch · type · OCR"]
+        P -- allowed --> B["ZXTouch backend<br/>touch · swipe"]
         P -- ask --> CP
-        L -- "active / step / touch point" --> H["Edge-glow overlay<br/>(SpringBoard)"]
+        L -- "active / step / touch point" --> H["Overlay in SpringBoard<br/>edge glow · OCR · clipboard · kill switch"]
+        H -- "screen text, kill" --> L
         B --> S[(Screen)]
     end
     L <-- "HTTPS, your API key" --> M["Model API<br/>Anthropic · DeepSeek · OpenAI · local"]
@@ -114,6 +120,7 @@ rootpilot install-icon                                     # home-screen icon + 
 | `rootpilot install-icon` | Add (or `--remove`) the RootPilot home-screen icon |
 | `rootpilot daemon-plist` | Print the launchd plist that keeps the control page running |
 | `rootpilot capture` | Save screen frames through the overlay (docs, debugging) |
+| `rootpilot bench` | Run the RootPilot Arena benchmark (`--suite quick\|full --seed N`) |
 
 ## Project layout
 
@@ -130,7 +137,7 @@ agent/            the Python core (runs on the phone)
 hud/              SpringBoard edge-glow overlay (Objective-C, built on Linux)
 scripts/          ZXTouch loopback/rootless patcher, icon and GIF tools
 docs/             setup, security model, configuration
-tests/            118+ tests, no network or device needed
+tests/            148 tests, no network or device needed
 ```
 
 ## Roadmap
@@ -140,7 +147,8 @@ tests/            118+ tests, no network or device needed
 | M0 | Scaffold, ZXTouch backend, smoke test on a device | ✅ done |
 | M1 | Permissions, perception, providers, audit log, CLI, docs | ✅ done |
 | — | Control page, home-screen icon, edge-glow overlay, rootless support | ✅ done |
-| M2 | Native helper daemon (screenshots, HID, buttons, kill-switch chord) | planned |
+| — | Leak-free OCR and typing via the overlay, kill switch, Arena benchmark | ✅ done |
+| M2 | Native helper daemon (screenshots, HID, buttons) | planned |
 | M3 | Accessibility-tree perception, tap-by-ref, secure-field detection | planned |
 | M4 | `rootpilot mcp` (stdio MCP server); Sign in with ChatGPT | planned |
 | M5 | `.deb` packages and an APT repo (rootful, rootless, RootHide) | planned |
@@ -152,8 +160,8 @@ tests/            118+ tests, no network or device needed
   terms of some apps and services. Only use RootPilot on a device you own.
 - **An AI agent can tap anything you can.** RootPilot asks before sensitive or irreversible
   actions, but no permission system is perfect. Don't leave it running unattended in banking,
-  payment, messaging or account-settings apps. Stop it any time from the control page, with
-  Ctrl-C, or with the stop file.
+  payment, messaging or account-settings apps. Stop it any time by locking the phone, pressing
+  volume 4× quickly, from the control page, with Ctrl-C, or with the stop file.
 - **Screen content is untrusted.** A web page, message or notification can contain text that
   tries to steer the agent (prompt injection). RootPilot marks screen content as data, not
   instructions, but you should still review what it does. See [`docs/SECURITY.md`](docs/SECURITY.md).

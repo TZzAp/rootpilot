@@ -276,6 +276,17 @@ backoff on 429/5xx, and `Retry-After` support.
   page and block the run until answered (timeout 180 s = deny); Stop also releases a waiting
   prompt. `/api/info` never includes secrets. Off by default; `rootpilot daemon-plist` generates
   a launchd plist (rootful or rootless paths) that runs it as `mobile`.
+- Kill switch (overlay): locking the phone or 4 volume-button presses within 2.5 s while a run is
+  active writes `/var/mobile/Library/RootPilot/KILL`; the loop stops before its next model call
+  or action ("Stopped by the kill switch (…)"). Stale kills are cleared at run start.
+- Typing and the clipboard go through the overlay (`clipboard` request: set/get); `type_text`
+  pastes into the field tapped last. ZXTouch keyboard tasks are never sent.
+- OCR goes through the overlay (`ocr` request, Vision, autorelease pool); ZXTouch's OCR, which
+  leaks 15-30 MB of SpringBoard memory per read, is only a fallback.
+- The control-page daemon starts as root, raises its jetsam memory limit (the default 18 MB killed
+  it mid-run) and drops to `mobile` before anything else.
+- RootPilot Arena (`agent/arena.py`): seeded games on loopback, scored by the pages; benchmark
+  runs leave out `shell`, `clipboard_get`, `ask_user` and deny confirmations at once.
 - `rootpilot capture`: the overlay saves screen frames, only when a request file exists in the
   private overlay folder (a notification alone does nothing). For docs and debugging; not yet
   used as an agent observation.
