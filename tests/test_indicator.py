@@ -150,6 +150,22 @@ def test_daemon_plist_follows_the_jailbreak_root(monkeypatch: pytest.MonkeyPatch
     assert daemon.install_path() == Path("/Library/LaunchDaemons/com.rootpilot.serve.plist")
 
 
+def test_daemon_plist_keeps_the_var_jb_symlink() -> None:
+    from agent.daemon import stable_path
+
+    preboot = "/private/preboot/ABC/dopamine-xyz/procursus"
+    real = {"/var/jb": preboot + "/"}.get
+    resolved = preboot + "/usr/bin/python3.9"
+    assert (
+        stable_path(resolved, Path("/var/jb"), lambda p: real(p, p)) == "/var/jb/usr/bin/python3.9"
+    )
+    assert stable_path(preboot + "x/y", Path("/var/jb"), lambda p: real(p, p)) == preboot + "x/y"
+    assert (
+        stable_path("/usr/bin/python3", Path("/var/jb"), lambda p: real(p, p)) == "/usr/bin/python3"
+    )
+    assert stable_path("/usr/bin/python3", Path("/"), lambda p: "/elsewhere") == "/usr/bin/python3"
+
+
 def test_capture_request_is_private_and_waits_for_the_overlay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

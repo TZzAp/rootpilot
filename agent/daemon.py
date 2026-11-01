@@ -88,21 +88,35 @@ def _drop_privileges(user: str) -> None:
     os.environ.update(USER=user, LOGNAME=user)
 
 
+def stable_path(path: str, root: Path, realpath: Callable[[str], str] = os.path.realpath) -> str:
+    """Rewrite a path under the resolved jailbreak root to go through ``root`` instead.
+
+    Dopamine's ``/var/jb`` points into a randomly named preboot folder that can change when the
+    jailbreak is set up again; a plist with the resolved path would then stop working.
+    """
+    if str(root) == "/":
+        return path
+    real = realpath(str(root)).rstrip("/")
+    if path == real or path.startswith(real + "/"):
+        return str(root) + path[len(real) :]
+    return path
+
+
 def daemon_plist(home: Optional[str] = None) -> bytes:
     # The daemon must see the same home as the shell that ran install-icon and setup (on
     # rootless that is /var/jb/var/mobile), or it would look for a different token and config.
     home = home or str(Path.home())
     root = jbroot()
-    checkout = Path(__file__).resolve().parent.parent
+    checkout = stable_path(str(Path(__file__).resolve().parent.parent), root)
     bins = [str(root / p) for p in ("usr/bin", "bin", "usr/sbin", "sbin")]
     path = ":".join(dict.fromkeys([*bins, "/usr/bin", "/bin", "/usr/sbin", "/sbin"]))
     log = str(state_dir({"HOME": home}) / "serve.log")
     plist = {
         "Label": LABEL,
-        "ProgramArguments": [sys.executable, "-m", "agent", "serve"],
-        "WorkingDirectory": str(checkout),
+        "ProgramArguments": [stable_path(sys.executable, root), "-m", "agent", "serve"],
+        "WorkingDirectory": checkout,
         "EnvironmentVariables": {
-            "PYTHONPATH": str(checkout),
+            "PYTHONPATH": checkout,
             "HOME": home,
             "PATH": path,
             # starts as root only to raise its memory limit, then drops to this user
