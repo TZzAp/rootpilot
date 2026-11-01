@@ -124,6 +124,8 @@ def daemon_plist(home: Optional[str] = None) -> bytes:
             "ROOTPILOT_MEMORY_LIMIT_MB": str(MEMORY_LIMIT_MB),
             # stdout is a file under launchd; without this, serve.log stays empty for hours
             "PYTHONUNBUFFERED": "1",
+            # it starts as root: bytecode it wrote would leave root-owned files in the checkout
+            "PYTHONDONTWRITEBYTECODE": "1",
         },
         "RunAtLoad": True,
         "KeepAlive": True,
