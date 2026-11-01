@@ -80,7 +80,7 @@ and re-observes so the model can check what changed. See [`SPEC.md`](SPEC.md) fo
 
 | Device | iOS | Jailbreak | Status | Arena (full, seed 7, `deepseek-flash`) |
 |---|---|---|---|---|
-| iPhone X | 16.7.11 | palera1n (rootful) | ✅ smoke test, control page, edge glow, typing, kill switch | **100%** (16/16) · 293 s · 0 mistakes |
+| iPhone X | 16.7.11 | palera1n (rootful) | ✅ smoke test, control page, edge glow, typing, kill switch, screenshots | **100%** (16/16) · 196 s · 0 mistakes (with screenshots; 293 s before the speed work) |
 | iPhone 7 Plus | 15.8.3 | Dopamine 2 + ElleKit (rootless) | ✅ smoke test, control page, edge glow, typing | **100%** (16/16) · 275 s · 0 mistakes |
 
 Rootful and rootless jailbreaks are both supported; RootPilot finds the jailbreak root at
