@@ -180,7 +180,10 @@ const games = {
   },
 };
 
-if (games[GAME]) { games[GAME](); report(); }
+// Without a benchmark session nothing is scored, so don't offer a game an agent could play
+// instead of opening the link from its task (a leftover page once cost a whole game).
+if (!SESSION) { $("title").textContent = "RootPilot Arena"; $("sub").textContent = "No benchmark session: open the exact link from the task."; }
+else if (games[GAME]) { games[GAME](); report(); }
 else { $("title").textContent = "Unknown game"; }
 </script>
 </body>
