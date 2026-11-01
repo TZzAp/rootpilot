@@ -20,7 +20,6 @@ from agent.backends.hud_ocr import HudClipboard, HudOCR, HudPixels
 from agent.errors import BackendError, BackendTimeout, BackendUnsupported, ConfigError
 from agent.indicator import hud_installed
 from agent.paths import jbroot
-from agent.perception import png
 from agent.perception.png import RGBImage
 from agent.types import Button, Capability, Image, Rect, Size, UINode
 
@@ -166,8 +165,8 @@ class ZXTouchBackend:
             raise BackendUnsupported("screenshots need the overlay (hud/README.md)")
         size = self.screen_size()
         scale = max(1.0, min(3.0, self._image_max_edge / max(size.width, size.height)))
-        img = self._pixels.read(scale)
-        return Image(png.encode(img), img.width, img.height, scale=img.width / size.width)
+        data, width, height = self._pixels.jpeg(scale)
+        return Image(data, width, height, scale=width / size.width, media_type="image/jpeg")
 
     def pixels(self) -> RGBImage:
         if not hud_installed():
@@ -180,13 +179,15 @@ class ZXTouchBackend:
             return "overlay"
         return "zxtouch"
 
-    def _read_text(self) -> list[tuple[str, float, float, float, float]]:
-        """OCR boxes in points."""
+    def _read_text(
+        self, roi: Optional[tuple[float, float, float, float]] = None
+    ) -> list[tuple[str, float, float, float, float]]:
+        """OCR boxes in points; the overlay can read just ``roi`` (x, y, w, h)."""
         if self.ocr_engine() == "overlay":
             if self._hud_ocr is None:
                 self._hud_ocr = HudOCR()
             try:
-                return self._hud_ocr.read()
+                return self._hud_ocr.read(roi)
             except BackendTimeout:
                 if self._ocr_mode == "hud":
                     raise
@@ -264,7 +265,10 @@ class ZXTouchBackend:
         raise BackendError("the Paste option did not appear; the field may not accept text")
 
     def _find_paste(self, near_y: float) -> Optional[tuple[float, float]]:
-        boxes = [b for b in self._read_text() if b[0].strip().lower() == "paste"]
+        # The edit menu appears just above or below the field: read only that band.
+        width = self.screen_size().width
+        band = (0.0, max(0.0, near_y - 130), width, 260.0)
+        boxes = [b for b in self._read_text(band) if b[0].strip().lower() == "paste"]
         if not boxes:
             return None
         # the edit menu appears just above or below the field

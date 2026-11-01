@@ -11,7 +11,7 @@ from agent.backends import zxtouch_protocol as proto
 from agent.backends.mock import MockBackend
 from agent.backends.zxtouch import ZXTouchBackend, is_exposed, require_loopback
 from agent.errors import BackendUnsupported, ConfigError
-from agent.types import Button, Rect
+from agent.types import Button, Rect, Size
 
 # ---- mock backend --------------------------------------------------------------------
 
@@ -187,14 +187,22 @@ def test_type_text_pastes_through_the_overlay(monkeypatch: pytest.MonkeyPatch) -
             [("Paste", 60.0, 150.0, 40.0, 16.0), ("Paste", 60.0, 700.0, 40.0, 16.0)],
         ]
     )
-    monkeypatch.setattr(dev, "_read_text", lambda: next(menus))
+    bands: list[Any] = []
+    monkeypatch.setattr(dev, "screen_size", lambda: Size(375, 812))
+
+    def read(roi: Any = None) -> Any:
+        bands.append(roi)
+        return next(menus)
+
+    monkeypatch.setattr(dev, "_read_text", read)
     actions.clear()
     dev.type_text("lantern")
     assert clipboard == ["lantern"]
+    assert bands == [(0.0, 70.0, 375, 260.0)]  # only the band around the field is read
     # long press on the field, then a tap on the Paste nearest the field
     assert actions[0] == (1, 100, 200) and actions[1] == (0, 100, 200)
     assert actions[-2:] == [(1, 80, 158), (0, 80, 158)]
 
-    monkeypatch.setattr(dev, "_read_text", lambda: [])
+    monkeypatch.setattr(dev, "_read_text", lambda roi=None: [])
     with pytest.raises(BackendError, match="Paste option did not appear"):
         dev.type_text("lantern")

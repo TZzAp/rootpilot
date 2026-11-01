@@ -30,12 +30,14 @@ class Rect:
 
 @dataclass(frozen=True)
 class Image:
-    """A PNG screenshot. ``scale`` is image pixels per screen point."""
+    """A screenshot. ``png`` holds the encoded bytes: PNG, or JPEG when ``media_type`` says so
+    (the overlay sends JPEG: ~10x less to upload). ``scale`` is image pixels per screen point."""
 
     png: bytes
     width: int
     height: int
     scale: float = 1.0
+    media_type: str = "image/png"
 
 
 class Button(str, enum.Enum):

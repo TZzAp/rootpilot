@@ -50,11 +50,11 @@ def test_zxtouch_uses_overlay_ocr_and_falls_back(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(zx, "hud_installed", lambda: True)
     dev = ZXTouchBackend()
     monkeypatch.setattr(dev, "screen_size", lambda: Size(375, 812))
-    monkeypatch.setattr(HudOCR, "read", lambda self: [("About", 20.0, 150.0, 60.0, 20.0)])
+    monkeypatch.setattr(HudOCR, "read", lambda self, roi=None: [("About", 20.0, 150.0, 60.0, 20.0)])
     assert dev.ocr_engine() == "overlay"
     assert [n.label for n in dev.ui_tree().children] == ["About"]  # type: ignore[union-attr]
 
-    def timeout(self: HudOCR) -> list[Any]:
+    def timeout(self: HudOCR, roi: Any = None) -> list[Any]:
         raise BackendTimeout("not loaded")
 
     monkeypatch.setattr(HudOCR, "read", timeout)

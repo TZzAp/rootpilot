@@ -37,6 +37,7 @@ static NSString *const kKillFile = @"/var/mobile/Library/RootPilot/KILL";
 static NSString *const kPixelsRequest = @"/var/mobile/Library/RootPilot/pixels.request";
 static NSString *const kPixelsResult = @"/var/mobile/Library/RootPilot/pixels.result.json";
 static NSString *const kPixelsData = @"/var/mobile/Library/RootPilot/pixels.rgb";
+static NSString *const kPixelsJPEG = @"/var/mobile/Library/RootPilot/pixels.jpg";
 
 // Self-report for `rootpilot doctor` and debugging: proves the overlay loaded and drew.
 static void RPWriteStatus(NSDictionary *extra) {
@@ -72,7 +73,9 @@ static void RPWriteStatus(NSDictionary *extra) {
 @property(nonatomic, strong) CAShapeLayer *glow;  // soft inner glow along the edge
 @property(nonatomic, strong) CAShapeLayer *killEdge;  // red edge shown when the kill switch fires
 @property(nonatomic, assign) BOOL active;
+@property(nonatomic, assign) NSInteger frozen;  // OCR requests in flight
 + (instancetype)shared;
+- (void)freeze:(BOOL)on;
 @end
 
 static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
@@ -139,6 +142,10 @@ static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
     glow.shadowRadius = 16;
     glow.shadowOpacity = 0.9;
     glow.shadowOffset = CGSizeZero;
+    // Without a shadowPath the render server traces the stroke every frame offscreen; that
+    // made each OCR read ~0.8 s slower on an iPhone X while the glow was up (1047 -> 1838 ms).
+    glow.shadowPath = CGPathCreateCopyByStrokingPath(path.CGPath, NULL, 3, kCGLineCapRound,
+                                                     kCGLineJoinRound, 0);
     [w.layer addSublayer:glow];
 
     // Bright edge: a conic gradient spinning under a ring-shaped mask.
@@ -191,6 +198,8 @@ static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
     killEdge.shadowRadius = 18;
     killEdge.shadowOpacity = 1;
     killEdge.shadowOffset = CGSizeZero;
+    killEdge.shadowPath = CGPathCreateCopyByStrokingPath(path.CGPath, NULL, width + 4,
+                                                         kCGLineCapRound, kCGLineJoinRound, 0);
     killEdge.opacity = 0;
     [w.layer addSublayer:killEdge];
 
@@ -198,6 +207,26 @@ static UIColor *RPColor(CGFloat r, CGFloat g, CGFloat b) {
     self.edge = edge;
     self.glow = glow;
     self.killEdge = killEdge;
+}
+
+// Pause the glow's animations while Vision reads the screen: the GPU is shared, and a spinning
+// masked gradient redrawn 60 times a second slowed every read. Nested: OCR may overlap.
+- (void)freeze:(BOOL)on {
+    CALayer *layer = self.window.layer;
+    if (!layer) return;
+    if (on) {
+        if (self.frozen++ > 0) return;
+        CFTimeInterval now = [layer convertTime:CACurrentMediaTime() fromLayer:nil];
+        layer.speed = 0;
+        layer.timeOffset = now;
+    } else {
+        if (self.frozen == 0 || --self.frozen > 0) return;
+        CFTimeInterval paused = layer.timeOffset;
+        layer.speed = 1;
+        layer.timeOffset = 0;
+        layer.beginTime = 0;
+        layer.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] - paused;
+    }
 }
 
 - (void)show {
@@ -457,6 +486,8 @@ static RPScreenFn RPScreenFunction(void) {
     if (![req isKindOfClass:NSDictionary.class]) return;
     NSString *rid = [req[@"id"] description] ?: @"";
     BOOL fast = [req[@"fast"] boolValue];
+    // Optional region (points): only that part is read, e.g. around a field for "Paste".
+    NSArray *roi = [req[@"roi"] isKindOfClass:NSArray.class] ? req[@"roi"] : nil;
     CGSize points = UIScreen.mainScreen.bounds.size;
     if (self.busy) {
         [self finish:rid items:nil size:points error:@"busy"];
@@ -472,6 +503,7 @@ static RPScreenFn RPScreenFunction(void) {
         return;
     }
     self.busy = YES;
+    [[RPHUD shared] freeze:YES];
     dispatch_async(self.queue, ^{
       @autoreleasepool {
         NSMutableArray *items = [NSMutableArray array];
@@ -480,13 +512,24 @@ static RPScreenFn RPScreenFunction(void) {
         request.recognitionLevel = fast ? VNRequestTextRecognitionLevelFast
                                         : VNRequestTextRecognitionLevelAccurate;
         request.usesLanguageCorrection = NO;  // UI text: keep exactly what is drawn
+        if (roi.count == 4) {
+            // Vision's region is normalised with the origin at the bottom left.
+            CGFloat x = [roi[0] doubleValue] / points.width, y = [roi[1] doubleValue] / points.height;
+            CGFloat w = [roi[2] doubleValue] / points.width, h = [roi[3] doubleValue] / points.height;
+            CGRect r = CGRectIntersection(CGRectMake(x, 1 - y - h, w, h), CGRectMake(0, 0, 1, 1));
+            if (!CGRectIsEmpty(r)) request.regionOfInterest = r;
+        }
         VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCGImage:shot.CGImage
                                                                                 options:@{}];
         [handler performRequests:@[ request ] error:&error];
         for (VNRecognizedTextObservation *obs in request.results) {
             VNRecognizedText *best = [obs topCandidates:1].firstObject;
             if (best.string.length == 0) continue;
-            CGRect b = obs.boundingBox;  // normalised, origin bottom-left
+            // Normalised, origin bottom-left, relative to the region of interest.
+            CGRect area = request.regionOfInterest, o = obs.boundingBox;
+            CGRect b = CGRectMake(area.origin.x + o.origin.x * area.size.width,
+                                  area.origin.y + o.origin.y * area.size.height,
+                                  o.size.width * area.size.width, o.size.height * area.size.height);
             [items addObject:@{
                 @"text" : best.string,
                 @"x" : @(b.origin.x * points.width),
@@ -498,7 +541,10 @@ static RPScreenFn RPScreenFunction(void) {
         }
         [self finish:rid items:items size:points error:error.localizedDescription];
       }
-      dispatch_async(dispatch_get_main_queue(), ^{ self.busy = NO; });
+      dispatch_async(dispatch_get_main_queue(), ^{
+        self.busy = NO;
+        [[RPHUD shared] freeze:NO];
+      });
     });
 }
 
@@ -540,13 +586,13 @@ static void RPClipboardHandle(void) {
 // blocks that OCR can't see and for screenshots sent to the model. Raw bytes because the
 // device's Python has no image decoder or resizer fast enough.
 
-static void RPPixelsWrite(NSString *rid, CGSize size, NSString *error) {
+static void RPPixelsWrite(NSString *rid, CGSize size, NSString *file, NSString *error) {
     NSDictionary *result = @{
         @"id" : rid ?: @"",
         @"ok" : @(error.length == 0),
         @"w" : @((NSInteger)size.width),
         @"h" : @((NSInteger)size.height),
-        @"file" : kPixelsData,
+        @"file" : file ?: @"",
         @"error" : error ?: @""
     };
     [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:kPixelsResult
@@ -564,14 +610,16 @@ static void RPPixelsHandle(void) {
     double scale = [req[@"scale"] doubleValue];
     scale = scale > 0 ? MAX(1.0, MIN(3.0, scale)) : 1.0;
     size_t w = (size_t)round(points.width * scale), h = (size_t)round(points.height * scale);
+    // "jpeg": a compressed screenshot for the model (~10x smaller than a PNG to upload).
+    double quality = [req[@"format"] isEqual:@"jpeg"] ? MAX(0.3, MIN(0.95, [req[@"quality"] doubleValue] ?: 0.7)) : 0;
     if (!RPScreenFunction()) {
-        RPPixelsWrite(rid, CGSizeZero, @"_UICreateScreenUIImage not available");
+        RPPixelsWrite(rid, CGSizeZero, nil, @"_UICreateScreenUIImage not available");
         return;
     }
     UIImage *shot = (__bridge_transfer UIImage *)RPScreenFunction()();
     CGImageRef image = shot.CGImage;
     if (!image) {
-        RPPixelsWrite(rid, CGSizeZero, @"screen capture failed");
+        RPPixelsWrite(rid, CGSizeZero, nil, @"screen capture failed");
         return;
     }
     CGImageRetain(image);
@@ -585,8 +633,17 @@ static void RPPixelsHandle(void) {
         CGContextRef ctx = CGBitmapContextCreate(rgba.mutableBytes, w, h, 8, w * 4, space,
                                                  kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big);
         CGColorSpaceRelease(space);
-        NSString *error = nil;
-        if (ctx) {
+        NSString *error = nil, *file = kPixelsData;
+        if (ctx && quality > 0) {
+            CGContextSetInterpolationQuality(ctx, kCGInterpolationMedium);
+            CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
+            CGImageRef small = CGBitmapContextCreateImage(ctx);
+            CGContextRelease(ctx);
+            NSData *jpeg = small ? UIImageJPEGRepresentation([UIImage imageWithCGImage:small], quality) : nil;
+            if (small) CGImageRelease(small);
+            file = kPixelsJPEG;
+            if (![jpeg writeToFile:kPixelsJPEG atomically:YES]) error = @"could not write the JPEG";
+        } else if (ctx) {
             CGContextSetInterpolationQuality(ctx, kCGInterpolationMedium);
             CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
             CGContextRelease(ctx);
@@ -604,7 +661,7 @@ static void RPPixelsHandle(void) {
             error = @"could not create a bitmap";
         }
         CGImageRelease(image);
-        RPPixelsWrite(rid, CGSizeMake(w, h), error);
+        RPPixelsWrite(rid, CGSizeMake(w, h), file, error);
       }
     });
 }

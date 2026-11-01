@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from agent.tools.handlers import ToolContext, clipboard_fingerprint
 from agent.tools.registry import Category, Registry, ToolDef, ToolOutcome
 from agent.types import (
     Capability,
+    Image,
     ImagePart,
     Message,
     TextPart,
@@ -139,6 +141,30 @@ class Agent:
         parts: list[TextPart | ImagePart] = []
         header = [f"foreground app: {self.foreground_app() or 'unknown'}"]
         tree_text = ""
+        # Text-only models, or screenshots switched off: the UI tree alone, no capture at all.
+        want_shot = (
+            include_screenshot
+            and self.config.screenshots
+            and self.provider.vision
+            and Capability.SCREENSHOT in caps
+        )
+        # Capture while OCR runs (the overlay serves both): ~0.25 s less per observation.
+        shot_box: dict[str, object] = {}
+        shooter: Optional[threading.Thread] = None
+        if want_shot:
+            try:
+                self.backend.screen_size()  # cached first, so the two threads don't both ask
+            except BackendError:
+                pass
+
+            def capture() -> None:
+                try:
+                    shot_box["shot"] = self.backend.screenshot()
+                except BackendError as exc:  # BackendUnsupported included
+                    shot_box["error"] = exc
+
+            shooter = threading.Thread(target=capture, daemon=True)
+            shooter.start()
         if include_tree and Capability.UI_TREE in caps:
             try:
                 root = self.backend.ui_tree()
@@ -152,17 +178,13 @@ class Agent:
             parts.append(TextPart("\n".join(header) + "\nUI tree:\n" + wrap_untrusted(tree_text)))
         else:
             parts.append(TextPart("\n".join(header) + "\n(no UI tree available)"))
-        # Text-only models, or screenshots switched off: the UI tree alone, no capture at all.
-        if (
-            include_screenshot
-            and self.config.screenshots
-            and self.provider.vision
-            and Capability.SCREENSHOT in caps
-        ):
-            try:
-                shot = downscale(self.backend.screenshot(), self.config.image_max_edge)
-            except BackendUnsupported:
-                shot = None
+        if shooter is not None:
+            shooter.join()
+            error = shot_box.get("error")
+            if isinstance(error, BackendError) and not isinstance(error, BackendUnsupported):
+                raise error
+            raw = shot_box.get("shot")
+            shot = downscale(raw, self.config.image_max_edge) if isinstance(raw, Image) else None
             if shot is not None:
                 parts.append(
                     TextPart(
@@ -170,8 +192,8 @@ class Agent:
                         f"{shot.scale:.3f} px per point; give coordinates in points)"
                     )
                 )
-                parts.append(ImagePart(shot.png))
-                self._save_screen(shot.png)
+                parts.append(ImagePart(shot.png, shot.media_type))
+                self._save_screen(shot.png, "jpg" if shot.media_type == "image/jpeg" else "png")
         self.audit.event(
             "observation",
             foreground=self.foreground_app(),
@@ -180,12 +202,12 @@ class Agent:
         )
         return parts
 
-    def _save_screen(self, data: bytes) -> None:
+    def _save_screen(self, data: bytes, ext: str = "png") -> None:
         if not (self.config.save_screens and self.screens_dir):
             return
         self.screens_dir.mkdir(parents=True, exist_ok=True)
         self._shots += 1
-        (self.screens_dir / f"{self._shots:03d}.png").write_bytes(data)
+        (self.screens_dir / f"{self._shots:03d}.{ext}").write_bytes(data)
 
     def foreground_app(self) -> Optional[str]:
         try:

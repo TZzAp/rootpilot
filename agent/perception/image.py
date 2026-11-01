@@ -28,6 +28,8 @@ def downscale(image: Image, max_edge: int) -> Image:
     height = max(1, round(image.height * ratio))
     data = _resize_with_pillow(image.png, width, height)
     if data is None:
+        if image.media_type != "image/png":
+            return image  # no JPEG decoder without Pillow; backends send JPEGs already sized
         small = png.resize(png.decode(image.png), width, height)
         data = png.encode(small)
     return Image(png=data, width=width, height=height, scale=image.scale * ratio)

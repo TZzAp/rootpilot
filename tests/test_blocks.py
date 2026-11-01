@@ -275,7 +275,6 @@ def test_dark_theme_with_dark_blocks() -> None:
 def test_zxtouch_screenshot_comes_from_the_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent.backends import zxtouch
     from agent.errors import BackendUnsupported
-    from agent.perception.image import png_size
     from agent.types import Capability
 
     backend = zxtouch.ZXTouchBackend(image_max_edge=1218)
@@ -288,13 +287,12 @@ def test_zxtouch_screenshot_comes_from_the_overlay(monkeypatch: pytest.MonkeyPat
     assert Capability.SCREENSHOT in backend.capabilities()
     asked: list[float] = []
 
-    def read(scale: float = 1.0) -> RGBImage:
+    def jpeg(scale: float = 1.0, quality: float = 0.7) -> tuple[bytes, int, int]:
         asked.append(scale)
-        w, h = round(375 * scale), round(812 * scale)
-        return RGBImage(w, h, b"\x10" * (w * h * 3))
+        return b"\xff\xd8jpeg", round(375 * scale), round(812 * scale)
 
-    monkeypatch.setattr(backend._pixels, "read", read)
+    monkeypatch.setattr(backend._pixels, "jpeg", jpeg)
     shot = backend.screenshot()
     assert asked == [1.5]  # long edge 812 pt -> 1218 px, scaled by the overlay, not in Python
     assert (shot.width, shot.height, shot.scale) == (562, 1218, 562 / 375)
-    assert png_size(shot.png) == (562, 1218)
+    assert shot.media_type == "image/jpeg" and shot.png.startswith(b"\xff\xd8")

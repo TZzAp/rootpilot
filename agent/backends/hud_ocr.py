@@ -81,8 +81,12 @@ class HudOCR:
         }
         self._fast = fast
 
-    def read(self) -> list[Box]:
-        data = hud_request("ocr", {"fast": self._fast}, **self._kw)
+    def read(self, roi: Optional[tuple[float, float, float, float]] = None) -> list[Box]:
+        """Text boxes in points; ``roi`` (x, y, w, h in points) reads only that part (faster)."""
+        payload: dict[str, Any] = {"fast": self._fast}
+        if roi is not None:
+            payload["roi"] = list(roi)
+        data = hud_request("ocr", payload, **self._kw)
         if data.get("error"):
             raise BackendError(f"overlay OCR failed: {data['error']}")
         return [
@@ -134,3 +138,18 @@ class HudPixels:
         if len(raw) != width * height * 3:
             raise BackendError(f"overlay pixels: expected {width}x{height}, got {len(raw)} bytes")
         return RGBImage(width, height, raw)
+
+    def jpeg(self, scale: float = 1.0, quality: float = 0.7) -> tuple[bytes, int, int]:
+        """A JPEG screenshot (bytes, width, height), encoded by the overlay."""
+        folder = self._folder or hud_dir()
+        payload = {"scale": scale, "format": "jpeg", "quality": quality}
+        data = hud_request("pixels", payload, folder=folder, **self._kw)
+        path = folder / "pixels.jpg"
+        try:
+            if not data.get("ok"):
+                raise BackendError(f"overlay screenshot: {data.get('error') or 'failed'}")
+            return path.read_bytes(), int(data["w"]), int(data["h"])
+        except (OSError, KeyError, ValueError) as exc:
+            raise BackendError(f"overlay screenshot: {exc}") from exc
+        finally:
+            path.unlink(missing_ok=True)
