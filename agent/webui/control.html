@@ -37,6 +37,9 @@
     background:var(--panel2); color:var(--fg); font-size:18px; padding:0; }
   .stopbar { margin-top:10px; width:100%; padding:14px; border:0; border-radius:12px; font:inherit;
     font-weight:800; font-size:17px; letter-spacing:.5px; background:var(--bad); color:#fff; }
+  /* Always on screen, so you know where it is before you need it; grey while nothing runs. */
+  .stopbar:disabled { background:var(--panel2); color:var(--dim); border:1px solid var(--line); }
+  .stopbar small { display:block; font-size:12px; font-weight:600; letter-spacing:0; opacity:.85; margin-top:2px; }
   nav { display:flex; gap:6px; margin-top:10px; }
   nav button { flex:1; padding:9px 4px; border-radius:10px; border:1px solid var(--line);
     background:var(--panel2); color:var(--dim); font:inherit; font-size:14px; font-weight:600; }
@@ -99,7 +102,7 @@
     <span class="state" id="state">…</span>
     <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
   </div>
-  <button class="stopbar hide" id="stopbar">■ STOP AI</button>
+  <button class="stopbar" id="stopbar" disabled>■ STOP AI<small id="stophint">nothing running</small></button>
   <nav>
     <button data-tab="run" class="sel">Run</button>
     <button data-tab="settings">Settings</button>
@@ -271,14 +274,16 @@ function renderLog(lines) {
   $("#log").scrollTop = $("#log").scrollHeight;
 }
 
-let pending = null, running = false, benchRunning = false, lastRunning = false;
+let pending = null, running = false, benchRunning = false, lastRunning = false, stopping = false;
 async function refreshStatus() {
   let s; try { s = await api("api/status"); } catch (e) { $("#state").textContent = "offline"; return; }
   running = s.running;
   const busy = running || benchRunning;
   $("#dot").classList.toggle("on", busy);
   $("#state").textContent = benchRunning ? "benchmark" : running ? "running" : (s.result ? s.result.reason : "idle");
-  $("#stopbar").classList.toggle("hide", !busy);
+  $("#stopbar").disabled = !busy;
+  if (!stopping || !busy) $("#stophint").textContent = busy ? "or on the phone: lock it, or press volume 4×" : "nothing running";
+  if (!busy) stopping = false;
   $("#start").disabled = busy; $("#runBench").disabled = busy;
   renderLog(s.lines || []);
   const rc = $("#resultCard");
@@ -307,7 +312,10 @@ $("#start").onclick = async () => {
   const task = $("#task").value.trim(); if (!task) return;
   const r = await api("api/run", {task}); if (r.error) alert(r.error); refreshStatus();
 };
-async function stopAll() { await api("api/stop", {}); refreshStatus(); }
+async function stopAll() {
+  stopping = true; $("#stophint").textContent = "stopping…";
+  await api("api/stop", {}); refreshStatus();
+}
 $("#stopbar").onclick = stopAll;
 $("#clearLog").onclick = () => { logCleared = true; $("#log").innerHTML = '<span class="muted">cleared</span>'; };
 
