@@ -143,6 +143,7 @@ def test_daemon_plist_follows_the_jailbreak_root(monkeypatch: pytest.MonkeyPatch
     assert plist["ProgramArguments"] == [sys.executable, "-m", "agent", "serve"]
     assert "UserName" not in plist and plist["KeepAlive"] is True  # starts as root, then drops
     assert plist["EnvironmentVariables"]["ROOTPILOT_RUN_AS"] == "mobile"
+    assert plist["EnvironmentVariables"]["PYTHONUNBUFFERED"] == "1"
     assert plist["EnvironmentVariables"]["PATH"].startswith("/var/jb/usr/bin:")
     assert plist["StandardOutPath"] == "/var/mobile/.local/state/rootpilot/serve.log"
     assert daemon.install_path() == Path("/var/jb/Library/LaunchDaemons/com.rootpilot.serve.plist")

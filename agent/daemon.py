@@ -122,6 +122,8 @@ def daemon_plist(home: Optional[str] = None) -> bytes:
             # starts as root only to raise its memory limit, then drops to this user
             "ROOTPILOT_RUN_AS": "mobile",
             "ROOTPILOT_MEMORY_LIMIT_MB": str(MEMORY_LIMIT_MB),
+            # stdout is a file under launchd; without this, serve.log stays empty for hours
+            "PYTHONUNBUFFERED": "1",
         },
         "RunAtLoad": True,
         "KeepAlive": True,
